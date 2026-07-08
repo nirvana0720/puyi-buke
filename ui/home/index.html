@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    /* 上方分頁籤列：一班一色、同班上下疊放（上執事／下學員），可左右滑動 */
+    .class-tab-bar {
+      display: flex;
+      align-items: flex-start;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      gap: 10px;
+    }
+    .class-tab-bar::-webkit-scrollbar { display: none; }
+    .class-tab-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .class-tab-btn {
+      flex-shrink: 0;
+      padding: 9px 14px;
+      font-size: 15px;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+      background: var(--tab-bg);
+      color: var(--tab-tx);
+      border: 1px solid var(--tab-line);
+    }
+    .class-tab-btn.active {
+      background: var(--tab-tx);
+      color: #FBF8F3;
+      border: 2px solid var(--tab-active-border);
+      font-weight: 500;
+    }
+
+    /* 學員頁：內層分頁（缺課補課 / 補課記錄） */
+    .inner-tab-content { display: none; }
+    .inner-tab-content.active { display: block; }
+
+    #status { font-size: 15px; color: var(--muted); margin-bottom: 8px; }
+    .member-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 22px;
+      font-size: 16px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logout-btn {
+      font-size: 14px;
+      cursor: pointer;
+      background: none;
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      padding: 4px 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<header class="buke-header">
+  <div class="title">普宜精舍補課系統</div>
+  <button class="logout-btn" id="btn-logout" style="border-color:var(--header-tx);color:var(--header-tx)">登出</button>
+</header>
+
+<div class="member-bar">
+  <span id="member-info">載入中…</span>
+</div>
+
+<!-- 班別分頁籤列 -->
+<div class="class-tab-bar" id="class-tab-bar"></div>
+
+<!-- 內容區 -->
+<div class="buke-wrap" id="content-area">
+  <div id="status"></div>
+  <div id="view-container"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../config/config.js" onerror="location.replace('../login/')"></script>
+<script src="../../domain/makeup_rules.js"></script>
+<script src="../student/student.js"></script>
+<script src="../student/render.js"></script>
+<script src="../student/transfer.js"></script>
+<script src="../student/training.js"></script>
+<script src="../leader/board.js"></script>
+<script src="../leader/render.js"></script>
+<script src="../leader/render_lists.js"></script>
+<script src="../leader/actions.js"></script>
+<script src="../leader/rollcall.js"></script>
+
+<script>
+(async function () {
+  'use strict';
+
+  const CLASSES_KEY = 'buke_classes';
+
+  // ── 未登入 → 導回登入頁 ──────────────────────────────────
+  const raw = sessionStorage.getItem(CLASSES_KEY);
+  if (!raw) { location.replace('../login/'); return; }
+
+  const classes = JSON.parse(raw);
+  if (!classes || !classes.length) { location.replace('../login/'); return; }
+
+  if (typeof CONFIG === 'undefined') return;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統`;
+  document.querySelector('.title').textContent = `${CONFIG.TEMPLE_NAME}課務系統`;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+
+  // 顯示姓名（所有班都是同一個人）
+  document.getElementById('member-info').textContent = classes[0].name;
+
+  // 登出
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    sessionStorage.removeItem(CLASSES_KEY);
+    location.replace('../login/');
+  });
+
+  // ── 建立分頁籤：一班一色，同班上下疊放（上執事／下學員） ──────
+  const tabBar = document.getElementById('class-tab-bar');
+
+  const ROLE_ICON  = { '學長': '⭐ ', '班長': '👑 ', '點名': '📋 ' };  // 學員不加圖示
+  const ROLE_ORDER = { '班長': 0, '學長': 0, '點名': 0, '學員': 1 };   // 執事在上、學員在下
+  const TAB_PALETTE = [
+    { bg: '#F1E5E3', tx: '#7A4A44', line: '#D9BEB9', active: '#5C332E' }, // 霧玫瑰
+    { bg: '#E7EBE1', tx: '#52604A', line: '#C4D0B8', active: '#3E4A38' }, // 鼠尾草綠
+    { bg: '#E4E8EC', tx: '#445264', line: '#B9C4D1', active: '#33404F' }, // 石板藍
+    { bg: '#EFE7DC', tx: '#6B5847', line: '#D9C7AF', active: '#52402F' }, // 燕麥棕
+    { bg: '#F2E9D8', tx: '#7A5D1E', line: '#DFC98A', active: '#5C4515' }, // 芥末黃
+  ];
+
+  // 依 class_ref 分組，保留各組第一次出現的順序（同一班的多個身分會被歸在同一欄）
+  const groupOrder = [];
+  const groups = new Map();
+  classes.forEach((cls, i) => {
+    const key = cls.class_ref ?? cls.class_name;
+    if (!groups.has(key)) { groups.set(key, []); groupOrder.push(key); }
+    groups.get(key).push({ ...cls, _idx: i });
+  });
+
+  groupOrder.forEach((key, colIdx) => {
+    const members = groups.get(key)
+      .slice()
+      .sort((a, b) => (ROLE_ORDER[a.role] ?? 1) - (ROLE_ORDER[b.role] ?? 1));
+    const color = TAB_PALETTE[colIdx % TAB_PALETTE.length];
+
+    const col = document.createElement('div');
+    col.className = 'class-tab-col';
+
+    members.forEach(m => {
+      const btn = document.createElement('button');
+      btn.className = 'class-tab-btn' + (m._idx === 0 ? ' active' : '');
+      btn.style.setProperty('--tab-bg', color.bg);
+      btn.style.setProperty('--tab-tx', color.tx);
+      btn.style.setProperty('--tab-line', color.line);
+      btn.style.setProperty('--tab-active-border', color.active);
+      btn.textContent = `${ROLE_ICON[m.role] || ''}${m.class_name}／${m.role}`;
+      btn.dataset.idx = m._idx;
+      btn.addEventListener('click', () => switchTab(m._idx));
+      col.appendChild(btn);
+    });
+
+    tabBar.appendChild(col);
+  });
+
+  // ── 分頁切換 ────────────────────────────────────────────
+  let currentIdx = -1;
+
+  async function switchTab(idx) {
+    if (idx === currentIdx) return;
+    currentIdx = idx;
+
+    // 更新 active 樣式（用 dataset.idx 比對，因為畫面上已經依班別重新分組排序，
+    // 跟 classes 原始順序不再一致）
+    tabBar.querySelectorAll('.class-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', Number(btn.dataset.idx) === idx);
+    });
+
+    const cls = classes[idx];
+    const container = document.getElementById('view-container');
+    const statusEl  = document.getElementById('status');
+    container.innerHTML = '';
+    statusEl.textContent = '載入中…';
+
+    try {
+      if (cls.role === '學員') {
+        await loadStudentView(cls, container, statusEl);
+      } else if (cls.role === '點名') {
+        await loadRollcallView(cls, container, statusEl);
+      } else {
+        await loadLeaderView(cls, container, statusEl);
+      }
+    } catch (e) {
+      statusEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+    }
+  }
+
+  // ── 學員視圖 ────────────────────────────────────────────
+  async function loadStudentView(cls, container, statusEl) {
+    container.innerHTML = `
+      <div id="section-progress"></div>
+      <div id="section-stats"></div>
+      <div class="buke-tabs" style="margin-bottom:12px">
+        <div class="buke-tab active" data-inner="absences">我的缺課</div>
+        <div class="buke-tab" data-inner="training">精舍培訓課程補課</div>
+        <div class="buke-tab" data-inner="transfer">我要調班</div>
+        <div class="buke-tab" data-inner="history">補課記錄</div>
+      </div>
+      <div id="inner-absences" class="inner-tab-content active">
+        <div id="section-absences"></div>
+      </div>
+      <div id="inner-training" class="inner-tab-content">
+        <div id="section-training"></div>
+      </div>
+      <div id="inner-transfer" class="inner-tab-content">
+        <div id="section-transfer"></div>
+      </div>
+      <div id="inner-history" class="inner-tab-content">
+        <div id="section-makeups"></div>
+      </div>
+    `;
+
+    container.querySelectorAll('.buke-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        container.querySelectorAll('.buke-tab').forEach(t => t.classList.remove('active'));
+        container.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`inner-${tab.dataset.inner}`).classList.add('active');
+      });
+    });
+
+    const { fetchMakeupRulesViaRpc, fetchStudentViewViaRpc, submitMakeupViaRpc, cancelMakeupViaRpc } = window.StudentLogic;
+    const { fetchTransferViewViaRpc, registerTransferViaRpc, cancelTransferViaRpc } = window.TransferLogic;
+    const { renderProgressBar, renderStats, renderAbsences, renderMyMakeups } = window.StudentRender;
+    const { renderTransferTab } = window.TransferRender;
+    const { renderTrainingTab } = window.TrainingRender;
+
+    // 並行取資料
+    const [view, rules] = await Promise.all([
+      fetchStudentViewViaRpc(sb, cls.member_db_id),
+      fetchMakeupRulesViaRpc(sb),
+    ]);
+
+    async function paintTransferTab() {
+      const tview = await fetchTransferViewViaRpc(sb, cls.member_db_id);
+      renderTransferTab(
+        tview,
+        async (fromSessionRef, toClassRef, toDate) => {
+          await registerTransferViaRpc(sb, cls.member_db_id, fromSessionRef, toClassRef, toDate);
+          await paintTransferTab();
+        },
+        async (fromSessionRef) => {
+          await cancelTransferViaRpc(sb, cls.member_db_id, fromSessionRef);
+          await paintTransferTab();
+        }
+      );
+    }
+
+    function paintStudent(v) {
+      renderProgressBar(v.memberInfo, v.stats);
+      renderStats(v.stats);
+      renderAbsences(v.absences, v.makeups, rules,
+        async (sessionRef, formData) => {
+          await submitMakeupViaRpc(sb, cls.member_db_id, formData);
+          const updated = await fetchStudentViewViaRpc(sb, cls.member_db_id);
+          paintStudent(updated);
+        },
+        async (sessionRef) => {
+          await cancelMakeupViaRpc(sb, cls.member_db_id, sessionRef);
+          const updated = await fetchStudentViewViaRpc(sb, cls.member_db_id);
+          paintStudent(updated);
+        },
+        cls.class_name
+      );
+      // 培訓分頁獨立渲染（自取資料，與禪修班 makeups 無關）
+      renderMyMakeups(v.makeups, cls.class_name);
+    }
+
+    paintStudent(view);
+    await paintTransferTab();
+    renderTrainingTab(sb, cls.member_db_id); // 非同步獨立渲染，不阻塞主流程
+    statusEl.textContent = `已載入（${new Date().toLocaleTimeString('zh-TW')}）`;
+  }
+
+  // ── 點名視圖 ────────────────────────────────────────────
+  async function loadRollcallView(cls, container, statusEl) {
+    container.innerHTML = '<div id="rollcall"></div>';
+    const { fetchTodayRollcallViaRpc } = window.RollcallLogic;
+    const { renderRollcall } = window.RollcallRender;
+    const data = await fetchTodayRollcallViaRpc(sb, cls.member_db_id);
+    renderRollcall(document.getElementById('rollcall'), data);
+    statusEl.textContent = `已載入（${new Date().toLocaleTimeString('zh-TW')}）`;
+  }
+
+  // ── 學長/班長視圖 ────────────────────────────────────────
+  async function loadLeaderView(cls, container, statusEl) {
+    container.innerHTML = '<div id="board"></div>';
+
+    const { fetchStudentStatsViaRpc } = window.BoardLogic;
+    const { renderBoard } = window.Render;
+
+    const rows = await fetchStudentStatsViaRpc(sb, cls.member_db_id, cls.role);
+    const mode = cls.role === '班長' ? 'class' : 'leader';
+    renderBoard(rows, mode, cls.member_db_id, sb);
+    statusEl.textContent =
+      `已載入 ${rows.length} 位學員（${new Date().toLocaleTimeString('zh-TW')}）`;
+  }
+
+  // 預設載入第一個分頁
+  await switchTab(0);
+})();
+</script>
+</body>
+</html>

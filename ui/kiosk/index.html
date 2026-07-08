@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統 — 義工櫃台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    .kiosk-section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .kiosk-section-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--header);
+      margin-bottom: 10px;
+    }
+    .toggle-btn {
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 10px 14px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--header);
+      cursor: pointer;
+      margin-bottom: 6px;
+      font-family: inherit;
+    }
+    #login-section {
+      max-width: 360px;
+      margin: 60px auto;
+      padding: 0 16px;
+    }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: 24px 20px;
+    }
+    .login-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--header);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── 登入區（未登入時顯示） ───────────────────────────────────── -->
+<div id="login-section">
+  <div class="login-card">
+    <div class="login-title">義工櫃台登入</div>
+    <form id="login-form" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div style="font-size:14px;margin-bottom:4px">帳號</div>
+        <input type="text" name="username" class="buke-input" style="width:100%" autocomplete="username" required>
+      </div>
+      <div>
+        <div style="font-size:14px;margin-bottom:4px">密碼</div>
+        <input type="password" name="password" class="buke-input" style="width:100%" autocomplete="current-password" required>
+      </div>
+      <div id="login-err" style="font-size:13px;color:var(--danger-tx);min-height:18px"></div>
+      <button type="submit" class="buke-btn" style="width:100%;padding:10px">登入</button>
+    </form>
+  </div>
+</div>
+
+<!-- ── 已登入：主畫面 ───────────────────────────────────────────── -->
+<div id="dashboard-section" style="display:none">
+
+  <header class="buke-header">
+    <div class="title">義工櫃台</div>
+    <button id="btn-logout" class="logout-btn"
+            style="font-size:14px;cursor:pointer;background:none;border:1px solid var(--header-tx);
+                   border-radius:var(--r-pill);padding:4px 12px;color:var(--header-tx)">登出</button>
+  </header>
+
+  <div style="background:var(--surface);border-bottom:1px solid var(--line);
+              padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:15px;color:var(--muted)">義工：<strong id="staff-name"></strong></span>
+    <label style="font-size:14px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-left:auto">
+      日期：<input type="date" id="date-picker" class="buke-input" style="width:160px">
+    </label>
+  </div>
+
+  <div class="buke-wrap">
+
+    <!-- 今日調班 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日調班</div>
+      <div id="kiosk-transfers"></div>
+    </div>
+
+    <!-- 今日補課 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日補課</div>
+      <div id="kiosk-makeups"></div>
+    </div>
+
+    <!-- 今日到場記錄 -->
+    <div style="margin-top:16px">
+      <div class="buke-section" style="margin-bottom:8px">📋 今日到場記錄</div>
+      <div id="kiosk-today-log">
+        <p class="buke-empty">今日尚無補課到場記錄。</p>
+      </div>
+    </div>
+
+    <!-- 今日培訓補課 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日培訓補課</div>
+      <div id="kiosk-training-makeups"></div>
+    </div>
+
+    <!-- 現場登記補課 -->
+    <button class="toggle-btn" data-toggle-panel="panel-mk-register" data-label="現場登記補課 / 其他日預約">
+      ▼ 現場登記補課 / 其他日預約
+    </button>
+    <div id="panel-mk-register" style="display:none;margin-bottom:14px">
+      <div class="kiosk-section" style="margin-bottom:0">
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <form id="mk-lookup-form" style="display:flex;gap:8px;align-items:center">
+          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345"
+                 inputmode="numeric" maxlength="20">
+          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+        </form>
+        <div id="mk-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+        <div id="mk-lookup-result"></div>
+      </div>
+    </div>
+
+    <!-- 現場登記培訓補課 -->
+    <button class="toggle-btn" data-toggle-panel="panel-training-register" data-label="現場登記培訓補課">
+      ▼ 現場登記培訓補課
+    </button>
+    <div id="panel-training-register" style="display:none;margin-bottom:14px">
+      <div class="kiosk-section" style="margin-bottom:0">
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <form id="training-lookup-form" style="display:flex;gap:8px;align-items:center">
+          <input type="text" name="member_code" class="buke-input" style="flex:1"
+                 placeholder="例：000012345" inputmode="numeric" maxlength="20">
+          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+        </form>
+        <div id="training-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+        <div id="training-lookup-result"></div>
+      </div>
+    </div>
+
+    <!-- 現場登記調班 -->
+    <button class="toggle-btn" data-toggle-panel="panel-tr-register" data-label="現場登記調班">
+      ▼ 現場登記調班
+    </button>
+    <div id="panel-tr-register" style="display:none;margin-bottom:14px">
+      <div class="kiosk-section" style="margin-bottom:0">
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <form id="tr-lookup-form" style="display:flex;gap:8px;align-items:center">
+          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345"
+                 inputmode="numeric" maxlength="20">
+          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+        </form>
+        <div id="tr-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+        <div id="tr-lookup-result"></div>
+      </div>
+    </div>
+
+  </div><!-- /.buke-wrap -->
+</div><!-- /#dashboard-section -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../config/config.js" onerror="document.getElementById('login-err').textContent='設定檔載入失敗'"></script>
+<script src="kiosk_render.js"></script>
+<script src="kiosk_render_training.js"></script>
+<script src="kiosk.js"></script>
+</body>
+</html>

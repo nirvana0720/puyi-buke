@@ -1,0 +1,168 @@
+/* 職責：補課系統共用視覺樣式（暖色禪風、大字體、適合年長學員）。三頁共用：leader / student / admin。
+   不負責：邏輯。改視覺只改這支。 */
+
+:root {
+  --bg:        #FAF6EF;   /* 奶油底 */
+  --surface:   #FFFFFF;   /* 卡片 */
+  --header:    #6F2B2B;   /* 精舍深棗紅 */
+  --header-2:  #8C3A3A;   /* 棗紅次色（chip） */
+  --header-tx: #FBEAEA;   /* 棗紅上的文字 */
+  --ink:       #2C2C2A;   /* 主文字 */
+  --muted:     #8A7F70;   /* 次要文字 */
+  --line:      #E7DECE;   /* 分隔線 */
+
+  --ok-bg:#EAF3DE; --ok-tx:#27500A; --ok-bar:#639922; --ok-line:#C0DD97;
+  --makeup-bg:#E1F5EE; --makeup-tx:#085041; --makeup-line:#9FE1CB;
+  --warn-bg:#FAEEDA; --warn-tx:#633806; --warn-bar:#EF9F27; --warn-line:#FAC775;
+  --danger-bg:#FCEBEB; --danger-tx:#791F1F; --danger-bar:#E24B4A; --danger-line:#F0997B;
+
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:999px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-size: 17px;          /* 大字基準，適合年長學員 */
+  line-height: 1.7;
+}
+
+/* ── 頂部標題列 ── */
+.buke-header {
+  background: var(--header);
+  color: var(--header-tx);
+  padding: 16px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 20px; font-weight: 500;
+}
+.buke-header .title { display: flex; align-items: center; gap: 10px; }
+.buke-chip {
+  background: var(--header-2); color: var(--header-tx);
+  font-size: 15px; padding: 5px 14px; border-radius: var(--r-pill);
+}
+
+/* ── 內容容器 ── */
+.buke-wrap { max-width: 1100px; margin: 0 auto; padding: 18px 22px; }
+
+/* ── 工具列（班別/組別選擇）── */
+.buke-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+}
+.buke-toolbar label { font-size: 16px; color: var(--muted); }
+.buke-select, .buke-input {
+  font-size: 17px; padding: 9px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); color: var(--ink); min-height: 44px;
+}
+.buke-btn {
+  font-size: 17px; padding: 9px 20px; min-height: 44px;
+  background: var(--header); color: var(--header-tx);
+  border: none; border-radius: var(--r-md); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.buke-btn:hover         { background: var(--header-2); color: var(--header-tx); }
+.buke-btn:disabled      { opacity: .55; cursor: default; }
+
+/* ghost：邊框風格，hover 時填滿底色讓文字換成淺色 */
+.buke-btn-ghost { background: var(--surface); color: var(--header); border: 1px solid var(--header); }
+.buke-btn-ghost:hover   { background: var(--header); color: var(--header-tx); }
+.buke-btn-ghost:disabled{ opacity: .55; cursor: default; }
+
+/* danger：刪除/移除動作，確保 hover 對比足夠 */
+.buke-btn-danger {
+  background: var(--danger-bar); color: #fff;
+  border: none;
+}
+.buke-btn-danger:hover  { background: var(--danger-tx); color: #fff; }
+
+/* ── 進度／說明列 ── */
+.buke-progress-note { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+.buke-progress-note .lead { font-size:17px; color:var(--header); font-weight:500; }
+.buke-progress-note .sub  { font-size:15px; color:var(--muted); }
+
+/* ── 統計磚 ── */
+.buke-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:20px; }
+.buke-stat { border-radius: var(--r-md); padding: 14px; }
+.buke-stat .label { font-size: 14px; }
+.buke-stat .num   { font-size: 26px; font-weight: 500; }
+.buke-stat.ok     { background:var(--ok-bg); }      .buke-stat.ok .label{color:var(--ok-tx);}      .buke-stat.ok .num{color:var(--ok-tx);}
+.buke-stat.makeup { background:var(--makeup-bg); }  .buke-stat.makeup .label{color:var(--makeup-tx);} .buke-stat.makeup .num{color:var(--makeup-tx);}
+.buke-stat.warn   { background:var(--warn-bg); }    .buke-stat.warn .label{color:var(--warn-tx);}  .buke-stat.warn .num{color:var(--warn-tx);}
+.buke-stat.danger { background:var(--danger-bg); }  .buke-stat.danger .label{color:var(--danger-tx);} .buke-stat.danger .num{color:var(--danger-tx);}
+
+/* ── 區段標題 ── */
+.buke-section { display:flex; align-items:center; gap:8px; margin:18px 0 10px; font-size:18px; font-weight:500; }
+.buke-section.care { color: var(--danger-tx); }
+.buke-section.pass { color: var(--ok-tx); }
+
+/* ── 學員卡片網格 ── */
+.buke-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; margin-bottom:20px; }
+.buke-card {
+  background: var(--surface); border:1px solid var(--line);
+  border-radius: var(--r-md); padding: 14px 16px;
+}
+.buke-card.care { border-color: var(--danger-line); }
+.buke-card.warn { border-color: var(--warn-line); }
+.buke-card.pass { border-color: var(--ok-line); }
+.buke-card .row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.buke-card .name { font-size:18px; font-weight:500; color:var(--ink); }
+.buke-card .meta { font-size:14px; color:var(--muted); margin-left:6px; }
+.buke-card .detail { font-size:14px; color:#5F5E5A; margin-top:6px; }
+
+/* ── 結業進度條 ── */
+.buke-bar { height:9px; background:#F1EFE8; border-radius:var(--r-pill); overflow:hidden; }
+.buke-bar > span { display:block; height:100%; }
+.buke-bar.ok > span     { background:var(--ok-bar); }
+.buke-bar.warn > span   { background:var(--warn-bar); }
+.buke-bar.danger > span { background:var(--danger-bar); }
+
+/* ── 徽章 ── */
+.buke-badge { font-size:13px; padding:4px 12px; border-radius:var(--r-pill); }
+.buke-badge.pass   { background:var(--ok-bg);     color:var(--ok-tx); }
+.buke-badge.warn   { background:var(--warn-bg);   color:var(--warn-tx); }
+.buke-badge.danger { background:var(--danger-bg); color:var(--danger-tx); }
+.buke-badge.makeup { background:var(--makeup-bg); color:var(--makeup-tx); }
+
+/* ── 訊息列 ── */
+.buke-msg   { font-size:15px; padding:10px 14px; border-radius:var(--r-md); margin:8px 0; }
+.buke-msg.err  { background:var(--danger-bg); color:var(--danger-tx); }
+.buke-empty { text-align:center; color:var(--muted); font-size:16px; padding:30px 0; }
+
+/* ── 區塊色卡（學長/班長看板：紅燈／逾期／待補課 各配一色，一眼可辨） ── */
+.buke-section-block {
+  border-radius: var(--r-md);
+  padding: 12px 14px 4px;
+  margin: 14px 0;
+}
+.buke-section-block .buke-section { margin: 0 0 8px; }
+.buke-section-block table { background: transparent; }
+.buke-section-block.care {
+  background: var(--danger-bg); border-left: 4px solid var(--danger-bar);
+}
+.buke-section-block.care .buke-section { color: var(--danger-tx); }
+.buke-section-block.warn {
+  background: var(--warn-bg); border-left: 4px solid var(--warn-bar);
+}
+.buke-section-block.warn .buke-section { color: var(--warn-tx); }
+.buke-section-block.makeup {
+  background: var(--makeup-bg); border-left: 4px solid var(--makeup-tx);
+}
+.buke-section-block.makeup .buke-section { color: var(--makeup-tx); }
+
+/* 展開清單按鈕（缺課尚未登記補課：預設只顯示前 5 筆） */
+.buke-expand-btn {
+  display: block; width: 100%; text-align: center;
+  font-size: 0.9em; color: var(--header); background: var(--surface);
+  border: 1px solid var(--header); border-radius: var(--r-md);
+  padding: 7px 0; margin: 4px 0 12px; cursor: pointer;
+}
+.buke-expand-btn:hover { background: var(--header); color: var(--header-tx); }
+
+/* ── 分頁標籤 ── */
+.buke-tabs { display:flex; gap:6px; border-bottom:1px solid var(--line); margin:6px 0 14px; }
+.buke-tab { font-size:16px; padding:10px 16px; cursor:pointer; color:var(--muted); border-bottom:3px solid transparent; }
+.buke-tab.active { color:var(--header); border-bottom-color:var(--header); font-weight:500; }

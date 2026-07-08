@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統 — 登入</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    .login-wrap { max-width: 480px; margin: 40px auto; padding: 0 22px; }
+    .login-wrap h2 { font-size: 1.1rem; color: var(--header); margin-bottom: 18px; }
+    .scan-box { border: 2px dashed var(--line); border-radius: var(--r-md);
+                padding: 20px; text-align: center; margin-bottom: 16px; }
+    #qr-reader { width: 100%; }
+    .divider { text-align: center; color: var(--muted); font-size: 15px;
+               margin: 12px 0; position: relative; }
+    .divider::before, .divider::after {
+      content: ''; position: absolute; top: 50%; width: 40%; height: 1px;
+      background: var(--line); }
+    .divider::before { left: 0; } .divider::after { right: 0; }
+    .manual-row { display: flex; gap: 10px; }
+    #msg { margin-top: 14px; }
+    .upload-btn { display: block; width: 100%; padding: 10px;
+                  background: var(--surface); border: 1px solid var(--line);
+                  border-radius: var(--r-md); font-size: 16px; cursor: pointer;
+                  color: var(--ink); text-align: center; }
+    .upload-btn:hover { background: var(--bg); }
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+
+<header class="buke-header">
+  <div class="title">普宜精舍補課系統</div>
+</header>
+
+<div class="login-wrap">
+  <h2>請掃描學員證 QR 碼登入</h2>
+
+  <!-- 相機掃描區 -->
+  <div class="scan-box">
+    <div id="qr-reader"></div>
+    <p style="color:var(--muted);font-size:14px;margin-top:8px">允許相機權限後自動掃描</p>
+  </div>
+
+  <!-- 相簿上傳 -->
+  <label class="upload-btn" for="file-input">📷 從相簿選取 QR 圖片</label>
+  <input type="file" id="file-input" accept="image/*">
+
+  <div class="divider">或</div>
+
+  <!-- 手動輸入（備用） -->
+  <div class="manual-row">
+    <input type="text" id="manual-code" class="buke-input" style="flex:1"
+           placeholder="輸入學員編號（9 碼數字）">
+    <button id="btn-manual" class="buke-btn">登入</button>
+  </div>
+
+  <div id="msg"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="../../config/config.js" onerror="showErr('找不到 config/config.js，請先建立設定檔。')"></script>
+
+<script>
+(function () {
+  if (typeof CONFIG === 'undefined') return;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統`;
+  document.querySelector('.title').textContent = `${CONFIG.TEMPLE_NAME}課務系統`;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+
+  const CLASSES_KEY = 'buke_classes';
+  const msgEl = document.getElementById('msg');
+
+  // 若已登入，直接跳轉
+  if (sessionStorage.getItem(CLASSES_KEY)) location.replace('../home/');
+
+  // ── 相機掃描 ───────────────────────────────────────────────
+  const scanner = new Html5QrcodeScanner('qr-reader',
+    { fps: 10, qrbox: { width: 250, height: 250 } }, false);
+  scanner.render(onScanSuccess, () => {});
+
+  // ── 相簿上傳 ───────────────────────────────────────────────
+  document.getElementById('file-input').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const qr = new Html5Qrcode('qr-reader');
+      const code = await qr.scanFile(file, true);
+      await doLogin(code);
+    } catch {
+      showErr('無法從圖片讀取 QR 碼，請確認圖片清晰。');
+    }
+  });
+
+  // ── 手動輸入 ───────────────────────────────────────────────
+  document.getElementById('btn-manual').addEventListener('click', () => {
+    const code = document.getElementById('manual-code').value.trim();
+    if (!code) return;
+    doLogin(code);
+  });
+  document.getElementById('manual-code').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin(e.target.value.trim());
+  });
+
+  // ── 核心：呼叫 login_my_classes RPC ──────────────────────
+  async function onScanSuccess(code) {
+    scanner.pause();
+    await doLogin(code);
+  }
+
+  async function doLogin(code) {
+    msgEl.innerHTML = '<div class="buke-msg">驗證中…</div>';
+    try {
+      const { data, error } = await sb.rpc('login_my_classes', { p_code: code });
+      if (error) throw new Error(error.message);
+      if (!data || !data.length) {
+        msgEl.innerHTML = '<div class="buke-msg err">查無資料，請洽精舍確認學員編號是否已建檔。</div>';
+        if (typeof scanner.resume === 'function') scanner.resume();
+        return;
+      }
+      sessionStorage.setItem(CLASSES_KEY, JSON.stringify(data));
+      location.replace('../home/');
+    } catch (e) {
+      msgEl.innerHTML = `<div class="buke-msg err">登入失敗：${e.message}</div>`;
+      if (typeof scanner.resume === 'function') scanner.resume();
+    }
+  }
+
+  function showErr(msg) {
+    document.getElementById('msg').innerHTML = `<div class="buke-msg err">${msg}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

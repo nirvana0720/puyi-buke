@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統 — 精舍後台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    /* ── 桌面版版型 ── */
+    body { margin: 0; }
+    .admin-shell { display: flex; height: calc(100vh - 52px); }
+
+    /* 左側選單 */
+    .admin-sidebar {
+      width: 210px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+      overflow-y: auto;
+      padding: 8px 0 20px;
+    }
+    .menu-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .07em;
+      color: var(--muted);
+      padding: 18px 14px 5px;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 4px;
+    }
+    .menu-divider {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 10px 14px 4px;
+    }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 9px 16px;
+      font-size: 14px;
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+      border-left: 3px solid transparent;
+      position: relative;
+    }
+    .menu-item:hover { background: var(--bg); }
+    .menu-item.active {
+      background: var(--bg);
+      color: var(--header);
+      border-left-color: var(--header);
+      font-weight: 600;
+    }
+    .menu-item.placeholder { color: var(--muted); cursor: default; }
+    .menu-item .soon-tag {
+      font-size: 10px;
+      background: var(--line);
+      color: var(--muted);
+      border-radius: 3px;
+      padding: 1px 5px;
+      margin-left: auto;
+    }
+
+    /* 右側內容 */
+    .admin-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+    .panel-title { font-size: 1.1rem; font-weight: 500; color: var(--header); margin-bottom: 18px; }
+
+    /* Auth 表單 */
+    #login-section { max-width: 380px; margin: 60px auto; padding: 0 22px; }
+    #login-section h2 { color: var(--header); margin-bottom: 20px; }
+    .login-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 16px; }
+
+    .logout-btn {
+      font-size: 13px; cursor: pointer; background: none;
+      border: 1px solid var(--header-tx); border-radius: var(--r-pill);
+      padding: 3px 10px; color: var(--header-tx);
+    }
+  </style>
+</head>
+<body>
+
+<header class="buke-header" style="position:sticky;top:0;z-index:10">
+  <div class="title">普宜精舍 — 精舍後台</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="buke-chip" id="chip-email" style="display:none"></span>
+    <button class="logout-btn" id="btn-logout" style="display:none">登出</button>
+  </div>
+</header>
+
+<!-- 未登入 -->
+<div id="login-section" style="display:none">
+  <h2>管理員登入</h2>
+  <div class="login-field">
+    <label>Email</label>
+    <input type="email" id="admin-email" class="buke-input" placeholder="admin@example.com">
+  </div>
+  <div class="login-field">
+    <label>密碼</label>
+    <input type="password" id="admin-password" class="buke-input" placeholder="••••••••">
+  </div>
+  <button id="btn-admin-login" class="buke-btn" style="width:100%;margin-top:4px">登入</button>
+  <div id="login-err" style="margin-top:10px"></div>
+  <p style="margin-top:16px;font-size:14px;color:var(--muted)">
+    管理員帳號請在 Supabase → Authentication → Users 建立。
+  </p>
+</div>
+
+<!-- 已登入：桌面外殼 -->
+<div id="main-section" style="display:none">
+  <div id="manual-warn-banner" style="display:none;margin:12px 16px 0"></div>
+  <div class="admin-shell">
+
+    <!-- 左側選單 -->
+    <nav class="admin-sidebar">
+      <div class="menu-group-label">班級與名冊</div>
+      <button class="menu-item" data-panel="import">📥 匯入資料</button>
+      <button class="menu-item" data-panel="classes">🏫 班別設定</button>
+      <button class="menu-item" data-panel="leave">😴 休學管理</button>
+
+      <div class="menu-group-label">角色與帳號</div>
+      <button class="menu-item" data-panel="assign">🎖️ 角色指派</button>
+      <button class="menu-item" data-panel="volunteers">👷 義工帳號</button>
+
+      <div class="menu-group-label">補課與調課</div>
+      <button class="menu-item" data-panel="makeup-rules">📋 補課規定設定</button>
+      <button class="menu-item" data-panel="training">🎓 精舍培訓課程</button>
+      <button class="menu-item" data-panel="makeup-overview">📊 補課／調課總覽</button>
+
+      <div class="menu-group-label">各式總表</div>
+      <button class="menu-item" data-panel="overview">🗂️ 各班總覽</button>
+      <button class="menu-item" data-panel="risk">🚨 結業風險總表</button>
+      <button class="menu-item" data-panel="students">📃 學員總表</button>
+
+      <hr class="menu-divider">
+      <button class="menu-item" data-panel="coming">🔄 刷卡資料同步說明</button>
+    </nav>
+
+    <!-- 右側內容 -->
+    <main class="admin-content" id="panel-content">
+      <p style="color:var(--muted)">請從左側選單選擇功能。</p>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../config/config.js" onerror="console.warn('找不到 config/config.js（請透過 localhost:8000 開啟）')"></script>
+<script src="admin.js"></script>
+<script src="panel_classes.js"></script>
+<script src="panel_leave.js"></script>
+<script src="panel_assign.js"></script>
+<script src="panel_makeup_rules.js"></script>
+<script src="panel_overview.js"></script>
+<script src="panel_risk.js"></script>
+<script src="panel_students.js"></script>
+<script src="panel_makeup_overview.js"></script>
+<script src="panel_import.js"></script>
+<script src="panel_volunteers.js"></script>
+<script src="panel_training.js"></script>
+
+<script>
+(async function () {
+  if (typeof CONFIG === 'undefined') return;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統　後台管理`;
+  document.querySelector('.title').textContent = `${CONFIG.TEMPLE_NAME}課務系統　後台管理`;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+  // ── Auth 守衛 ─────────────────────────────────────────────
+  const { data: { session } } = await sb.auth.getSession();
+
+  if (!session) {
+    document.getElementById('login-section').style.display = '';
+    return;
+  }
+
+  // 顯示外殼
+  document.getElementById('main-section').style.display = '';
+  const chipEl = document.getElementById('chip-email');
+  chipEl.textContent = session.user.email;
+  chipEl.style.display = '';
+  document.getElementById('btn-logout').style.display = '';
+
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await sb.auth.signOut(); location.reload();
+  });
+
+  // ── 「尚未綁定 zenclass」提示條（登入就看到，不用點進「班別設定」）───
+  async function checkManualWarning() {
+    const banner = document.getElementById('manual-warn-banner');
+    if (!banner) return;
+    try {
+      const { data: classes, error } = await sb.rpc('list_audit_classes');
+      if (error || !classes) return;
+      const unbound = classes.filter(c => (c.class_id || '').startsWith('MANUAL-') && c.status === '進行中');
+      if (unbound.length > 0) {
+        banner.innerHTML = `
+          <div style="background:#fdecea;border:1px solid #f5c6cb;color:#611a15;padding:10px 16px;
+                      border-radius:6px;margin-bottom:12px;font-size:15px">
+            ⚠ 有 ${unbound.length} 班尚未綁定 zenclass 真代碼，可能無法同步報到資料。
+            <a href="#" id="manual-warn-link" style="color:#611a15;text-decoration:underline">前往處理 →</a>
+          </div>`;
+        banner.style.display = '';
+        document.getElementById('manual-warn-link').addEventListener('click', e => {
+          e.preventDefault();
+          document.querySelector('.menu-item[data-panel="classes"]')?.click();
+        });
+      } else {
+        banner.innerHTML = '';
+        banner.style.display = 'none';
+      }
+    } catch (e) { /* 靜默失敗，不影響主流程 */ }
+  }
+  checkManualWarning();
+
+  // ── 選單路由 ─────────────────────────────────────────────
+  const panelEl = document.getElementById('panel-content');
+
+  const PANELS = {
+    classes:        { title: '班別設定',    load: (c)       => window.PanelClasses.loadClassesPanel(sb, c)           },
+    leave:          { title: '休學管理',    load: (c)       => window.PanelLeave.loadLeavePanel(sb, c)               },
+    assign:         { title: '角色指派',    load: (c)       => window.PanelAssign.loadAssignPanel(sb, c)             },
+    'makeup-rules': { title: '補課規定設定', load: (c)       => window.PanelMakeupRules.loadMakeupRulesPanel(sb, c)   },
+    overview:       { title: '各班總覽',    load: (c)       => window.PanelOverview.loadOverviewPanel(sb, c)         },
+    risk:           { title: '結業風險總表', load: (c)       => window.PanelRisk.loadRiskPanel(sb, c)                 },
+    students:           { title: '學員總表',      load: (c, opts) => window.PanelStudents.loadStudentsPanel(sb, c, opts)             },
+    'makeup-overview':  { title: '補課／調課總覽', load: (c)       => window.PanelMakeupOverview.loadMakeupOverviewPanel(sb, c)           },
+    'import':           { title: '匯入資料',       load: (c) => window.PanelImport.loadImportPanel(sb, c)       },
+    'volunteers':       { title: '義工帳號',       load: (c) => window.PanelVolunteers.loadVolunteersPanel(sb, c) },
+    'training':         { title: '精舍培訓課程管理', load: (c) => window.PanelTraining.loadTrainingPanel(sb, c) },
+    coming:         { title: '刷卡資料同步說明', load: (c) => { c.innerHTML = '<p style="color:var(--muted);padding:20px 0;line-height:1.8">此功能改用瀏覽器書籤操作，不在後台執行（zenclass 資料要跟 zenclass 同一個網頁分頁才抓得到）。<br>到刷卡電腦（或任何已登入 zenclass 的瀏覽器），點書籤列的同步書籤即可；<br>想補過去某一天的資料，書籤跳出的視窗直接輸入日期即可，不用來這裡操作。<br><br>想確認資料是否跟官方報到系統一致：另外還有一支「稽核比對」書籤，一樣要在已登入 zenclass 的瀏覽器使用，選擇要稽核的班別後，會自動把整期已上過的堂次都跟官方資料比對一次，跑完下載一份差異報告 CSV（不會直接修改資料庫）。報告裡如果有「缺漏」或「不一致」，要修正的話，回到刷卡電腦用原本的同步書籤，手動輸入那一天的日期重新同步即可。</p>'; } },
+  };
+
+  // 跨面板跳轉（供 panel_overview.js 的「看名單」使用）
+  window.AdminSwitchPanel = function (key, opts) {
+    const btn = document.querySelector(`[data-panel="${key}"]`);
+    if (btn) btn._opts = opts;   // 暫存 opts，load 時取用
+    if (btn) btn.click();
+  };
+
+  document.querySelectorAll('.menu-item').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.classList.contains('placeholder')) return;
+      document.querySelectorAll('.menu-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const key  = btn.dataset.panel;
+      const opts = btn._opts;
+      btn._opts  = null;
+      const def  = PANELS[key];
+      if (!def) return;
+
+      panelEl.innerHTML = def.title
+        ? `<div class="panel-title">${def.title}</div><div id="panel-body"></div>`
+        : '<div id="panel-body"></div>';
+
+      await def.load(document.getElementById('panel-body'), opts);
+    });
+  });
+
+  // 預設開「班別設定」
+  document.querySelector('[data-panel="classes"]').click();
+})();
+</script>
+
+<!-- 登入表單（不依賴 sb，獨立執行） -->
+<script>
+document.getElementById('btn-admin-login')?.addEventListener('click', async () => {
+  const email    = document.getElementById('admin-email').value.trim();
+  const password = document.getElementById('admin-password').value;
+  const errEl    = document.getElementById('login-err');
+  if (!email || !password) {
+    errEl.innerHTML = '<div class="buke-msg err">請填入 Email 與密碼。</div>'; return;
+  }
+  const btn = document.getElementById('btn-admin-login');
+  btn.disabled = true; btn.textContent = '登入中…';
+  const sb2 = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const { error } = await sb2.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.innerHTML = `<div class="buke-msg err">登入失敗：${error.message}</div>`;
+    btn.disabled = false; btn.textContent = '登入';
+  } else {
+    location.reload();
+  }
+});
+</script>
+</body>
+</html>

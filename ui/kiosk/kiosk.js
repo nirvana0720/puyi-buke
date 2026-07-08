@@ -1,0 +1,382 @@
+// 職責：義工櫃台頁——登入邏輯、RPC 包裝、shell 初始化、今日清單載入、現場登記流程
+// 不負責：DOM 渲染細節（kiosk_render.js）
+
+'use strict';
+
+const KIOSK_KEY = 'buke_kiosk_staff';
+
+// ── RPC 包裝 ─────────────────────────────────────────────────────
+
+async function staffLoginRpc(sb, username, password) {
+  const { data, error } = await sb.rpc('staff_login', { p_username: username, p_password: password });
+  if (error) throw new Error(error.message);
+  return data; // null = 帳密錯誤
+}
+
+async function kioskGetDay(sb, staffId, date) {
+  const { data, error } = await sb.rpc('kiosk_get_day', { p_staff_id: staffId, p_date: date });
+  if (error) throw new Error(error.message);
+  return data || { transfers: [], makeups: [], training_makeups: [] };
+}
+
+async function kioskTransferAttend(sb, staffId, transferId) {
+  const { data, error } = await sb.rpc('kiosk_transfer_attend', { p_staff_id: staffId, p_transfer_id: transferId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskMakeupAttend(sb, staffId, makeupId) {
+  const { data, error } = await sb.rpc('kiosk_makeup_attend', { p_staff_id: staffId, p_makeup_id: makeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskMakeupComplete(sb, staffId, makeupId) {
+  const { data, error } = await sb.rpc('kiosk_makeup_complete', { p_staff_id: staffId, p_makeup_id: makeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskMakeupDepart(sb, staffId, makeupId) {
+  const { data, error } = await sb.rpc('kiosk_makeup_depart', { p_staff_id: staffId, p_makeup_id: makeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskEditMakeup(sb, staffId, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) {
+  const { data, error } = await sb.rpc('kiosk_edit_makeup', {
+    p_staff_id: staffId, p_makeup_id: makeupId, p_session_ref: sessionRef,
+    p_earphone: earphone, p_planned_date: plannedDate, p_planned_slot: plannedSlot, p_note: note
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskGetTodayLog(sb, staffId) {
+  const { data, error } = await sb.rpc('kiosk_get_today_log', { p_staff_id: staffId });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function kioskLookupMember(sb, staffId, memberCode) {
+  const { data, error } = await sb.rpc('kiosk_lookup_member', { p_staff_id: staffId, p_member_code: memberCode });
+  if (error) throw new Error(error.message);
+  return data || { found: false };
+}
+
+async function kioskRegisterMakeup(sb, staffId, memberDbId, formData) {
+  const { data, error } = await sb.rpc('kiosk_register_makeup', {
+    p_staff_id:     staffId,
+    p_member_db_id: memberDbId,
+    p_session_ref:  formData.sessionRef,
+    p_earphone:     formData.earphone ?? null,
+    p_planned_date: formData.plannedDate || null,
+    p_planned_slot: formData.plannedSlot || null,
+    p_note:         formData.note || null,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskTrainingMakeupComplete(sb, staffId, trainingMakeupId) {
+  const { data, error } = await sb.rpc('kiosk_training_makeup_complete', { p_staff_id: staffId, p_training_makeup_id: trainingMakeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function fetchKioskTrainingClasses(sb) {
+  const { data, error } = await sb.rpc('get_training_classes');
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function fetchKioskTrainingSessions(sb, classRef) {
+  const { data, error } = await sb.rpc('get_training_sessions', { p_class_ref: classRef });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function fetchKioskMakeupRules(sb) {
+  try {
+    const { data } = await sb.rpc('get_makeup_rules');
+    return data ? { time_slots: [], ...data } : { notice: '', time_slots: [] };
+  } catch (_) { return { notice: '', time_slots: [] }; }
+}
+
+async function kioskRegisterTrainingMakeup(sb, staffId, memberDbId, trainingSessionRef, note, plannedDate, plannedSlot, earphone) {
+  const { data, error } = await sb.rpc('kiosk_register_training_makeup', {
+    p_staff_id: staffId, p_member_db_id: memberDbId,
+    p_training_session_ref: trainingSessionRef, p_note: note || null,
+    p_planned_date: plannedDate || null, p_planned_slot: plannedSlot || null, p_earphone: earphone ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskRegisterTransfer(sb, staffId, memberDbId, fromSessionRef, toClassRef, toDate) {
+  const { data, error } = await sb.rpc('kiosk_register_transfer', {
+    p_staff_id:          staffId,
+    p_member_db_id:      memberDbId,
+    p_from_session_ref:  fromSessionRef,
+    p_to_class_ref:      toClassRef,
+    p_to_date:           toDate,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ── 今天日期（台北時間） ──────────────────────────────────────────
+function todayStr() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+}
+
+// ── 主程式 ───────────────────────────────────────────────────────
+(async function () {
+  if (typeof CONFIG === 'undefined') return;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統　義工櫃台`;
+  const titleEl = document.querySelector('.title');
+  if (titleEl) titleEl.textContent = `${CONFIG.TEMPLE_NAME}課務系統　義工櫃台`;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm } = window.KioskRender;
+
+  const loginSection  = document.getElementById('login-section');
+  const dashSection   = document.getElementById('dashboard-section');
+  const staffNameEl   = document.getElementById('staff-name');
+  const loginErrEl    = document.getElementById('login-err');
+  const datePicker    = document.getElementById('date-picker');
+  const sectionLabels = document.getElementById('kiosk-section-labels');
+
+  let staff = null;
+  try { staff = JSON.parse(sessionStorage.getItem(KIOSK_KEY)); } catch (_) {}
+
+  // ── 登入狀態切換 ─────────────────────────────────────────────
+  function showDashboard() {
+    loginSection.style.display  = 'none';
+    dashSection.style.display   = 'block';
+    staffNameEl.textContent     = staff.display_name || staff.role;
+    datePicker.value            = todayStr();
+    loadDay(datePicker.value);
+  }
+
+  function showLogin() {
+    loginSection.style.display  = 'block';
+    dashSection.style.display   = 'none';
+  }
+
+  if (staff) { showDashboard(); } else { showLogin(); }
+
+  // ── 登入表單 ─────────────────────────────────────────────────
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn  = e.target.querySelector('[type="submit"]');
+    const user = e.target.querySelector('[name="username"]').value.trim();
+    const pass = e.target.querySelector('[name="password"]').value;
+    loginErrEl.textContent = '';
+    btn.disabled = true; btn.textContent = '登入中…';
+    try {
+      const result = await staffLoginRpc(sb, user, pass);
+      if (!result) {
+        loginErrEl.textContent = '帳號或密碼錯誤，請重試。';
+        btn.disabled = false; btn.textContent = '登入';
+        return;
+      }
+      staff = result;
+      sessionStorage.setItem(KIOSK_KEY, JSON.stringify(staff));
+      showDashboard();
+    } catch (err) {
+      loginErrEl.textContent = `登入失敗：${err.message}`;
+      btn.disabled = false; btn.textContent = '登入';
+    }
+  });
+
+  // ── 登出 ─────────────────────────────────────────────────────
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    sessionStorage.removeItem(KIOSK_KEY);
+    staff = null;
+    showLogin();
+  });
+
+  // ── 日期切換 ─────────────────────────────────────────────────
+  datePicker.addEventListener('change', () => loadDay(datePicker.value));
+
+  // ── 今日到場記錄 ──────────────────────────────────────────────
+  async function loadTodayLog() {
+    try {
+      const records = await kioskGetTodayLog(sb, staff.staff_id);
+      KioskRender.renderTodayLog(records);
+    } catch (_) {}
+  }
+
+  // ── 載入今日清單 ──────────────────────────────────────────────
+  async function loadDay(date) {
+    document.getElementById('kiosk-transfers').innerHTML         = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
+    document.getElementById('kiosk-makeups').innerHTML           = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
+    document.getElementById('kiosk-training-makeups').innerHTML  = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
+    try {
+      const day = await kioskGetDay(sb, staff.staff_id, date);
+      const today = todayStr();
+      const makeups = (day.makeups || []).map(m => ({
+        ...m,
+        is_overdue: m.deadline_date != null && today > m.deadline_date,
+      }));
+      renderTransfers(
+        day.transfers,
+        async (transferId) => {
+          await kioskTransferAttend(sb, staff.staff_id, transferId);
+          loadDay(datePicker.value);
+        }
+      );
+      renderMakeups(
+        makeups,
+        async (makeupId) => { await kioskMakeupAttend(sb, staff.staff_id, makeupId); },
+        async (makeupId) => {
+          await kioskMakeupDepart(sb, staff.staff_id, makeupId);
+          await loadTodayLog();
+        },
+        async (makeupId) => {
+          await kioskMakeupComplete(sb, staff.staff_id, makeupId);
+          await loadTodayLog();
+        },
+        async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
+          await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
+          loadDay(datePicker.value);
+        },
+        async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode)
+      );
+      renderTrainingMakeupsToday(
+        day.training_makeups || [],
+        async (id) => { await kioskTrainingMakeupComplete(sb, staff.staff_id, id); }
+      );
+      await loadTodayLog();
+    } catch (err) {
+      document.getElementById('kiosk-transfers').innerHTML =
+        `<p class="buke-msg err">❌ ${err.message}</p>`;
+    }
+  }
+
+  // ── 現場查詢學員（補課） ──────────────────────────────────────
+  document.getElementById('mk-lookup-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const code    = e.target.querySelector('[name="member_code"]').value.trim();
+    const msgEl   = document.getElementById('mk-lookup-msg');
+    const btn     = e.target.querySelector('[type="submit"]');
+    const resultEl = document.getElementById('mk-lookup-result');
+    msgEl.textContent = ''; resultEl.innerHTML = '';
+    btn.disabled = true; btn.textContent = '查詢中…';
+    try {
+      const result = await kioskLookupMember(sb, staff.staff_id, code);
+      if (!result.found) {
+        msgEl.textContent = `查無學員：${result.reason || ''}`;
+        msgEl.style.color = 'var(--danger-tx)';
+      } else {
+        renderMakeupRegisterForm(
+          'mk-lookup-result',
+          result,
+          result.classes || [],
+          todayStr(),
+          async (formData) => {
+            await kioskRegisterMakeup(sb, staff.staff_id, formData.memberDbId, formData);
+          },
+          () => {
+            loadDay(datePicker.value);
+            resultEl.innerHTML = '';
+            msgEl.textContent = '✅ 已登記，清單已更新。';
+            msgEl.style.color = 'var(--ok-tx)';
+          }
+        );
+      }
+    } catch (err) {
+      msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
+    }
+    btn.disabled = false; btn.textContent = '查詢';
+  });
+
+  // ── 現場查詢學員（調班） ──────────────────────────────────────
+  document.getElementById('tr-lookup-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const code    = e.target.querySelector('[name="member_code"]').value.trim();
+    const msgEl   = document.getElementById('tr-lookup-msg');
+    const btn     = e.target.querySelector('[type="submit"]');
+    const resultEl = document.getElementById('tr-lookup-result');
+    msgEl.textContent = ''; resultEl.innerHTML = '';
+    btn.disabled = true; btn.textContent = '查詢中…';
+    try {
+      const result = await kioskLookupMember(sb, staff.staff_id, code);
+      if (!result.found) {
+        msgEl.textContent = `查無學員：${result.reason || ''}`;
+        msgEl.style.color = 'var(--danger-tx)';
+      } else {
+        renderTransferRegisterForm(
+          'tr-lookup-result',
+          result,
+          result.upcoming || [],
+          result.targets  || [],
+          async (fromSessionRef, toClassRef, toDate) => {
+            await kioskRegisterTransfer(sb, staff.staff_id, result.member_db_id, fromSessionRef, toClassRef, toDate);
+            loadDay(datePicker.value);
+          }
+        );
+      }
+    } catch (err) {
+      msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
+    }
+    btn.disabled = false; btn.textContent = '查詢';
+  });
+
+  // ── 現場查詢學員（培訓補課） ─────────────────────────────────
+  document.getElementById('training-lookup-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const code     = e.target.querySelector('[name="member_code"]').value.trim();
+    const msgEl    = document.getElementById('training-lookup-msg');
+    const btn      = e.target.querySelector('[type="submit"]');
+    const resultEl = document.getElementById('training-lookup-result');
+    msgEl.textContent = ''; resultEl.innerHTML = '';
+    btn.disabled = true; btn.textContent = '查詢中…';
+    try {
+      const [member, classes, rules] = await Promise.all([
+        kioskLookupMember(sb, staff.staff_id, code),
+        fetchKioskTrainingClasses(sb),
+        fetchKioskMakeupRules(sb),
+      ]);
+      if (!member.found) {
+        msgEl.textContent = `查無學員：${member.reason || ''}`; msgEl.style.color = 'var(--danger-tx)';
+      } else {
+        window.KioskTrainingRender.renderTrainingRegisterForm(
+          'training-lookup-result', member, classes, rules,
+          (classRef) => fetchKioskTrainingSessions(sb, classRef),
+          async (trainingSessionRef, note, plannedDate, plannedSlot, earphone) => {
+            await kioskRegisterTrainingMakeup(sb, staff.staff_id, member.member_db_id, trainingSessionRef, note, plannedDate, plannedSlot, earphone);
+            loadDay(datePicker.value);
+            resultEl.innerHTML = '';
+            msgEl.textContent = '✅ 培訓補課已登記，清單已更新。';
+            msgEl.style.color = 'var(--ok-tx)';
+          }
+        );
+      }
+    } catch (err) {
+      msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
+    }
+    btn.disabled = false; btn.textContent = '查詢';
+  });
+
+  // ── 展開/收合現場登記區塊 ────────────────────────────────────
+  document.querySelectorAll('[data-toggle-panel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = document.getElementById(btn.dataset.togglePanel);
+      const open  = panel.style.display === 'none' || !panel.style.display;
+      panel.style.display = open ? 'block' : 'none';
+      btn.textContent = (open ? '▲ ' : '▼ ') + btn.dataset.label;
+    });
+  });
+})();
+
+if (typeof window !== 'undefined') {
+  window.KioskLogic = {
+    kioskGetDay, kioskTransferAttend, kioskMakeupAttend, kioskMakeupComplete,
+    kioskMakeupDepart, kioskEditMakeup, kioskGetTodayLog,
+    kioskLookupMember, kioskRegisterMakeup, kioskRegisterTransfer,
+    fetchKioskTrainingClasses, fetchKioskTrainingSessions, kioskRegisterTrainingMakeup,
+    kioskTrainingMakeupComplete,
+  };
+}

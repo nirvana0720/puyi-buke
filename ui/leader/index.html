@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統 — 學長/班長看板</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    #status { font-size: 15px; color: var(--muted); margin-bottom: 8px; }
+    .logout-btn { font-size: 14px; color: var(--muted); cursor: pointer;
+                  background: none; border: 1px solid var(--header-tx);
+                  border-radius: var(--r-pill); padding: 4px 12px;
+                  color: var(--header-tx); }
+  </style>
+</head>
+<body>
+
+<header class="buke-header">
+  <div class="title">普宜精舍 — 看板</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="buke-chip" id="chip-role">載入中</span>
+    <button class="logout-btn" id="btn-logout">登出</button>
+  </div>
+</header>
+
+<div class="buke-wrap">
+  <div class="buke-toolbar">
+    <button id="btn-load" class="buke-btn">載入</button>
+    <button id="btn-refresh" class="buke-btn buke-btn-ghost" style="display:none">🔄 重新整理</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="board"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../config/config.js" onerror="location.replace('../login/')"></script>
+<script src="board.js"></script>
+<script src="render.js"></script>
+
+<script>
+(async function () {
+  const SESSION_KEY = 'buke_session';
+
+  // ── 未登入 → 導回登入頁 ────────────────────────────────────
+  const raw = sessionStorage.getItem(SESSION_KEY);
+  if (!raw) { location.replace('../login/'); return; }
+  const sess = JSON.parse(raw);
+
+  // 非學長/班長 → 導到學員頁
+  if (!sess.role || sess.role === '學員') { location.replace('../student/'); return; }
+
+  if (typeof CONFIG === 'undefined') return;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const { fetchStudentStatsViaRpc } = window.BoardLogic;
+  const { renderBoard } = window.Render;
+
+  const statusEl   = document.getElementById('status');
+  const btnLoad    = document.getElementById('btn-load');
+  const btnRefresh = document.getElementById('btn-refresh');
+
+  // 顯示角色資訊
+  const scopeLabel = sess.role === '班長' ? '班長（整班）'
+    : `學長（${sess.scope_group || ''}）`;
+  document.getElementById('chip-role').textContent = scopeLabel;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統　${scopeLabel}看板`;
+  document.querySelector('.title').textContent = `${CONFIG.TEMPLE_NAME}課務系統`;
+
+  // 登出
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    location.replace('../login/');
+  });
+
+  // ── 載入看板 ───────────────────────────────────────────────
+  async function loadBoard() {
+    statusEl.textContent = '載入中…';
+    document.getElementById('board').innerHTML = '';
+    btnRefresh.style.display = '';
+
+    try {
+      const rows = await fetchStudentStatsViaRpc(sb, sess.member_db_id, sess.role);
+      const modeLabel = sess.role === '班長' ? 'class' : 'leader';
+      statusEl.textContent =
+        `已載入 ${rows.length} 位學員（${new Date().toLocaleTimeString('zh-TW')}）`;
+      renderBoard(rows, modeLabel);
+    } catch (e) {
+      statusEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+    }
+  }
+
+  btnLoad.addEventListener('click', loadBoard);
+  btnRefresh.addEventListener('click', loadBoard);
+
+  // 自動載入
+  await loadBoard();
+})();
+</script>
+</body>
+</html>

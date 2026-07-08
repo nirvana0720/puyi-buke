@@ -1,0 +1,22 @@
+# 真實學員個資備份，絕不進 repo（即使 private 也不放）
+backup/
+
+# 匯出/暫存紀錄（可能含真實學員資料）
+records/
+
+# 開發筆記與 SQL 腳本：網站運作不需要這兩個資料夾，
+# 且裡面因為早期測試混了真實學員姓名/學號，這次公開 repo 不放。
+# 本機檔案不受影響，繼續留在電腦上；SQL 照舊直接貼到 Supabase SQL Editor 執行即可。
+docs/
+db/
+
+# 系統/編輯器雜訊
+.DS_Store
+Thumbs.db
+*.log
+
+# 空白/無用殘留檔
+iconverr.txt
+
+# 本機開發用（不影響部署，但無需進版控）
+node_modules/

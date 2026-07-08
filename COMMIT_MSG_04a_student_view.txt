@@ -1,0 +1,18 @@
+feat: student view - progress bar, attendance stats, inline makeup form
+
+DB (already written, run in Supabase):
+- rpc_04a_makeup_rules.sql: add get_makeup_rules() returning notice/mode/days/weeks
+- rpc_04a_register_makeup.sql: drop old 5-param + rebuild 7-param register_makeup
+  (adds training_name, earphone, earliest_mode logic)
+- grant_rpc.sql: updated REVOKE/GRANT for new signatures
+
+Frontend:
+- student.js: add fetchMakeupRulesViaRpc(); update fetchStudentViewViaRpc to
+  compute stats (phys/absent/makeup); update submitMakeupViaRpc for 7 params
+- render.js: add renderProgressBar (green+orange bar with graduation line),
+  renderStats (3 KPI boxes), rewrite renderAbsences (toggle expand form per
+  card, method radio 影音/培訓 with conditional earphone/training fields,
+  date range warning, already-registered shows status badge)
+- home/index.html: add section-progress/section-stats divs; call parallel
+  fetch of view+rules; call renderProgressBar/renderStats; pass rules+makeups
+  to renderAbsences

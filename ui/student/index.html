@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>補課系統 — 學員頁</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../theme.css">
+  <style>
+    #status { font-size: 15px; color: var(--muted); margin-bottom: 8px; }
+    .member-bar { background: var(--surface); border-bottom: 1px solid var(--line);
+                  padding: 10px 22px; font-size: 16px; color: var(--muted);
+                  display: flex; align-items: center; justify-content: space-between; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .logout-btn { font-size: 14px; color: var(--muted); cursor: pointer;
+                  background: none; border: 1px solid var(--line);
+                  border-radius: var(--r-pill); padding: 4px 12px; }
+  </style>
+</head>
+<body>
+
+<header class="buke-header">
+  <div class="title">普宜精舍補課系統 — 學員頁</div>
+</header>
+
+<div class="member-bar">
+  <span id="member-info">載入中…</span>
+  <button class="logout-btn" id="btn-logout">登出</button>
+</div>
+
+<div class="buke-wrap">
+  <div id="status"></div>
+
+  <div class="buke-tabs">
+    <div class="buke-tab active" data-tab="absences">缺課補課</div>
+    <div class="buke-tab" data-tab="history">補課記錄</div>
+  </div>
+
+  <div id="tab-absences" class="tab-content active">
+    <div id="section-absences"></div>
+  </div>
+  <div id="tab-history" class="tab-content">
+    <div id="section-makeups"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../config/config.js" onerror="location.replace('../login/')"></script>
+<script src="../../domain/makeup_rules.js"></script>
+<script src="student.js"></script>
+<script src="render.js"></script>
+
+<script>
+(async function () {
+  const SESSION_KEY = 'buke_session';
+
+  // ── 未登入 → 導回登入頁 ────────────────────────────────────
+  const session = sessionStorage.getItem(SESSION_KEY);
+  if (!session) { location.replace('../login/'); return; }
+  const sess = JSON.parse(session);
+
+  // 非學員（學長/班長）→ 導到 leader 頁
+  if (sess.role && sess.role !== '學員') { location.replace('../leader/'); return; }
+
+  if (typeof CONFIG === 'undefined') return;
+  document.title = `${CONFIG.TEMPLE_NAME}課務系統`;
+  document.querySelector('.title').textContent = `${CONFIG.TEMPLE_NAME}課務系統`;
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const { fetchStudentViewViaRpc, submitMakeupViaRpc } = window.StudentLogic;
+  const { renderAbsences, renderMyMakeups } = window.StudentRender;
+
+  const statusEl = document.getElementById('status');
+
+  // 顯示學員姓名
+  document.getElementById('member-info').textContent =
+    `${sess.name}（${sess.dharma_name || '—'}）`;
+
+  // 登出
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    location.replace('../login/');
+  });
+
+  // 分頁切換
+  document.querySelectorAll('.buke-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.buke-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // ── 載入資料 ───────────────────────────────────────────────
+  async function loadAll() {
+    statusEl.textContent = '載入中…';
+    try {
+      const view = await fetchStudentViewViaRpc(sb, sess.member_db_id);
+
+      // 更新 header（補班別資訊）
+      document.getElementById('member-info').textContent =
+        `${view.memberInfo.name}（${view.memberInfo.dharma_name || '—'}）｜${view.memberInfo.class_name || ''}`;
+
+      renderAbsences(view.absences, async (sessionRef, formData) => {
+        await submitMakeupViaRpc(sb, sess.member_db_id, formData);
+        const updated = await fetchStudentViewViaRpc(sb, sess.member_db_id);
+        renderMyMakeups(updated.makeups);
+      });
+      renderMyMakeups(view.makeups);
+      statusEl.textContent = `已載入（${new Date().toLocaleTimeString('zh-TW')}）`;
+    } catch (e) {
+      statusEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+    }
+  }
+
+  await loadAll();
+})();
+</script>
+</body>
+</html>
