@@ -40,11 +40,14 @@
   <!-- 相機掃描區 -->
   <div class="scan-box">
     <div id="qr-reader"></div>
-    <p style="color:var(--muted);font-size:14px;margin-top:8px">允許相機權限後自動掃描</p>
+    <button id="btn-camera" class="buke-btn" style="width:100%">📷 開啟相機掃描</button>
+    <p id="camera-hint" style="color:var(--muted);font-size:14px;margin-top:8px">按下方按鈕後，手機會詢問是否允許使用相機</p>
   </div>
 
+  <div class="divider">或</div>
+
   <!-- 相簿上傳 -->
-  <label class="upload-btn" for="file-input">📷 從相簿選取 QR 圖片</label>
+  <label class="upload-btn" for="file-input">🖼️ 從相簿選取 QR 圖片</label>
   <input type="file" id="file-input" accept="image/*">
 
   <div class="divider">或</div>
@@ -77,10 +80,34 @@
   // 若已登入，直接跳轉
   if (sessionStorage.getItem(CLASSES_KEY)) location.replace('../home/');
 
-  // ── 相機掃描 ───────────────────────────────────────────────
-  const scanner = new Html5QrcodeScanner('qr-reader',
-    { fps: 10, qrbox: { width: 250, height: 250 } }, false);
-  scanner.render(onScanSuccess, () => {});
+  // ── 相機掃描（按按鈕才啟動，不用套件自帶的英文介面）─────────────
+  let html5Qr = null;
+  let scanning = false;
+  document.getElementById('btn-camera').addEventListener('click', startCameraScan);
+
+  async function startCameraScan() {
+    if (scanning) return;
+    const btn = document.getElementById('btn-camera');
+    const hint = document.getElementById('camera-hint');
+    btn.disabled = true;
+    btn.textContent = '啟動相機中…';
+    try {
+      html5Qr = new Html5Qrcode('qr-reader');
+      await html5Qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        onScanSuccess,
+        () => {}
+      );
+      scanning = true;
+      btn.style.display = 'none';
+      hint.textContent = '請將 QR 碼對準框框';
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '📷 開啟相機掃描';
+      showErr('無法開啟相機，請確認已允許相機權限，或改用下方「從相簿選取 QR 圖片」。');
+    }
+  }
 
   // ── 相簿上傳 ───────────────────────────────────────────────
   document.getElementById('file-input').addEventListener('change', async e => {
@@ -107,7 +134,7 @@
 
   // ── 核心：呼叫 login_my_classes RPC ──────────────────────
   async function onScanSuccess(code) {
-    scanner.pause();
+    if (html5Qr && scanning) { try { html5Qr.pause(true); } catch (e) {} }
     await doLogin(code);
   }
 
@@ -118,14 +145,14 @@
       if (error) throw new Error(error.message);
       if (!data || !data.length) {
         msgEl.innerHTML = '<div class="buke-msg err">查無資料，請洽精舍確認學員編號是否已建檔。</div>';
-        if (typeof scanner.resume === 'function') scanner.resume();
+        if (html5Qr && scanning) { try { html5Qr.resume(); } catch (e) {} }
         return;
       }
       sessionStorage.setItem(CLASSES_KEY, JSON.stringify(data));
       location.replace('../home/');
     } catch (e) {
       msgEl.innerHTML = `<div class="buke-msg err">登入失敗：${e.message}</div>`;
-      if (typeof scanner.resume === 'function') scanner.resume();
+      if (html5Qr && scanning) { try { html5Qr.resume(); } catch (e) {} }
     }
   }
 
