@@ -8,7 +8,7 @@ function renderTransfers(transfers, onAttend) {
   const el = document.getElementById('kiosk-transfers');
   if (!el) return;
   if (!transfers.length) {
-    el.innerHTML = '<p class="buke-empty">今日無調班名單。</p>'; return;
+    el.innerHTML = '<p class="buke-empty">今日無日↔夜間調班補課名單。</p>'; return;
   }
   el.innerHTML = transfers.map((t, i) => {
     const canAttend = t.status === '已登記';
@@ -390,7 +390,7 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
   if (!upcoming.length) {
     el.innerHTML = `<div class="buke-card" style="margin-top:10px">
       <div class="row"><span class="name">${member.name}</span><span class="meta">${member.class_name}</span></div>
-      <div class="detail" style="margin-top:6px">目前無可調班的未來堂次。</div>
+      <div class="detail" style="margin-top:6px">目前無可日↔夜間調班補課的未來堂次。</div>
     </div>`; return;
   }
   if (!targets.length) {
@@ -408,7 +408,7 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
     <div class="row"><span class="name">${member.name}</span><span class="meta">${member.class_name}</span></div>
     <form id="tr-reg-form" style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
       <div>
-        <div style="font-size:14px;margin-bottom:4px">哪一堂課要調班 <span style="color:var(--danger-tx)">*</span></div>
+        <div style="font-size:14px;margin-bottom:4px">哪一堂課要日↔夜間調班補課 <span style="color:var(--danger-tx)">*</span></div>
         <select name="from_session" class="buke-select" style="width:100%">
           <option value="">請選擇</option>${upOpts}
         </select>
@@ -428,7 +428,7 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
         <div id="tr-reg-date-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <button type="submit" class="buke-btn">登記調班</button>
+        <button type="submit" class="buke-btn">登記日↔夜間調班補課</button>
         <span id="tr-reg-msg" style="font-size:14px"></span>
       </div>
     </form>
@@ -466,7 +466,7 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
     btn.disabled = true; msg.textContent = '登記中…'; msg.style.color='var(--muted)';
     try {
       await onSubmit(Number(fromVal), Number(toVal), dateVal);
-      msg.textContent = '✅ 調班已登記！'; msg.style.color='var(--ok-tx)'; btn.textContent='已登記';
+      msg.textContent = '✅ 日↔夜間調班補課已登記！'; msg.style.color='var(--ok-tx)'; btn.textContent='已登記';
     } catch (err) {
       msg.textContent = `❌ ${err.message}`; msg.style.color='var(--danger-tx)'; btn.disabled=false;
     }

@@ -48,7 +48,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
 
   // ── 已登記的調班列表 ──────────────────────────────────────────
   const registeredHtml = transfers.length === 0
-    ? '<p class="buke-empty" style="margin-bottom:16px">目前尚無調班登記。</p>'
+    ? '<p class="buke-empty" style="margin-bottom:16px">目前尚無日↔夜間調班補課登記。</p>'
     : transfers.map((t, i) => {
         const badgeCls = t.status === '已出席' ? 'pass' : t.status === '未到' ? 'danger' : 'warn';
         const badgeTxt = t.status === '已出席' ? '✅ 已出席'
@@ -60,11 +60,11 @@ function renderTransferTab(view, onSubmit, onCancel) {
                <button data-tr-cancel-toggle="${i}"
                        style="font-size:13px;padding:4px 10px;border:1px solid var(--danger-tx);
                               color:var(--danger-tx);background:none;border-radius:var(--r-pill);cursor:pointer">
-                 取消調班
+                 取消日↔夜間調班補課
                </button>
                <div id="tr-cancel-confirm-${i}" style="display:none;margin-top:8px;padding:10px 12px;
                     background:var(--bg);border:1px solid var(--danger-tx);border-radius:var(--r);font-size:14px">
-                 確定要取消這筆調班嗎？
+                 確定要取消這筆日↔夜間調班補課嗎？
                  <div style="display:flex;gap:8px;margin-top:8px">
                    <button data-tr-cancel-ok="${i}" class="buke-btn buke-btn-danger"
                            style="font-size:13px;padding:5px 14px">確定取消</button>
@@ -111,7 +111,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
   ).join('');
 
   const formHtml = `
-    <div style="font-size:15px;font-weight:500;color:var(--header);margin-bottom:12px">登記調班</div>
+    <div style="font-size:15px;font-weight:500;color:var(--header);margin-bottom:12px">登記日↔夜間調班補課</div>
     ${noUpcoming
       ? '<p class="buke-empty">目前沒有可調的未來堂次。</p>'
       : noTargets
@@ -120,7 +120,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
 
             <div>
               <div style="font-size:15px;margin-bottom:6px">
-                哪一堂課要調班 <span style="color:var(--danger-tx)">*</span>
+                哪一堂課要日↔夜間調班補課 <span style="color:var(--danger-tx)">*</span>
               </div>
               <select name="from_session" class="buke-select" style="width:100%">
                 <option value="">請選擇堂次</option>
@@ -150,7 +150,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
             </div>
 
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <button type="submit" class="buke-btn">送出調班登記</button>
+              <button type="submit" class="buke-btn">送出日↔夜間調班補課登記</button>
               <span id="tr-form-msg" style="font-size:15px"></span>
             </div>
           </form>`
@@ -158,7 +158,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
 
   el.innerHTML = `
     <div style="margin-bottom:20px">
-      <div style="font-size:15px;font-weight:500;color:var(--header);margin-bottom:10px">我登記的調班</div>
+      <div style="font-size:15px;font-weight:500;color:var(--header);margin-bottom:10px">我登記的日↔夜間調班補課</div>
       ${registeredHtml}
     </div>
     <div style="border-top:1px solid var(--line);padding-top:16px">
@@ -247,7 +247,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
 
     let blocked = false;
     if (!fromVal) {
-      fromWarn.textContent = '⚠ 請選擇哪一堂課要調班';
+      fromWarn.textContent = '⚠ 請選擇哪一堂課要日↔夜間調班補課';
       fromWarn.style.display = 'block';
       blocked = true;
     } else { fromWarn.style.display = 'none'; }
@@ -272,7 +272,7 @@ function renderTransferTab(view, onSubmit, onCancel) {
 
     try {
       await onSubmit(Number(fromVal), Number(classVal), dateVal);
-      msgEl.textContent = '✅ 調班已登記！';
+      msgEl.textContent = '✅ 日↔夜間調班補課已登記！';
       msgEl.style.color = 'var(--ok-tx)';
       submitBtn.textContent = '已登記';
     } catch (err) {

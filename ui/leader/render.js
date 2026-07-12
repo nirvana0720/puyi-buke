@@ -194,7 +194,7 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
       ${hasUnreg
         ? `<button id="${proxyBtnId}" class="buke-btn small">代為登記補課（${m.unregistered_absences.length} 堂）</button>`
         : ''}
-      <button id="${tfrBtnId}" class="buke-btn small" style="background:#1B4332;color:#fff">代為調班</button>
+      <button id="${tfrBtnId}" class="buke-btn small" style="background:#1B4332;color:#fff">代為日↔夜間調班補課</button>
     </div>
     ${hasUnreg ? `<div id="${proxyFormId}" style="display:none;margin-top:6px"></div>` : ''}
     <div id="${tfrFormId}" style="display:none;margin-top:6px"></div>
@@ -216,7 +216,7 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
     }
     function closeTransfer() {
       tfrForm.style.display = 'none';
-      tfrBtn.textContent = '代為調班';
+      tfrBtn.textContent = '代為日↔夜間調班補課';
     }
 
     // 代為登記補課：開自己前先收起調班，並讓調班鍵淡化，避免搞錯正在操作哪一個
@@ -245,7 +245,7 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
           setDim(tfrBtn, false);
           window.LeaderActions.renderProxyTransferForm(tfrForm, sb, m, leaderDbId, null);
           tfrForm.style.display = '';
-          tfrBtn.textContent = '▲ 收起調班';
+          tfrBtn.textContent = '▲ 收起日↔夜間調班補課';
         } else {
           closeTransfer();
           setDim(btn, false);

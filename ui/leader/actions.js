@@ -123,7 +123,7 @@ async function actingCancelMakeup(sessionRef, targetMemberDbId, leaderDbId, sb) 
  * 在 formEl 內插入代調班表單
  */
 async function renderProxyTransferForm(formEl, sb, row, leaderDbId, onDone) {
-  formEl.innerHTML = '<span style="font-size:0.9em">載入調班資料中…</span>';
+  formEl.innerHTML = '<span style="font-size:0.9em">載入日↔夜間調班補課資料中…</span>';
 
   let tview;
   try {
@@ -169,7 +169,7 @@ async function renderProxyTransferForm(formEl, sb, row, leaderDbId, onDone) {
       <label style="display:block;margin-bottom:8px">去上課日期
         <select name="to_date" style="margin-left:8px"></select>
       </label>
-      <button type="button" class="buke-btn primary proxy-tfr-submit" style="background:#1B4332">送出代調班</button>
+      <button type="button" class="buke-btn primary proxy-tfr-submit" style="background:#1B4332">送出代日↔夜間調班補課</button>
       <span class="proxy-tfr-msg" style="margin-left:8px;font-size:0.9em;color:var(--danger)"></span>
     </div>
   `;
@@ -203,7 +203,7 @@ async function renderProxyTransferForm(formEl, sb, row, leaderDbId, onDone) {
     const toDate      = toDateSel.value;
     const msgEl       = formEl.querySelector('.proxy-tfr-msg');
 
-    if (!toDate) { msgEl.textContent = '請選擇調班日期。'; return; }
+    if (!toDate) { msgEl.textContent = '請選擇日↔夜間調班補課日期。'; return; }
     msgEl.textContent = '送出中…';
 
     try {

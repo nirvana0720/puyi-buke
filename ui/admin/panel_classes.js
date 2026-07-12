@@ -4,7 +4,7 @@
 'use strict';
 
 (function () {
-  const { fetchClasses, updateClass, insertClass, archiveClass, activateClass, fetchSessions, updateSession,
+  const { fetchClasses, updateClass, insertClass, archiveClass, activateClass, fetchSessions, updateSession, deleteSession,
           bindClassId, findClassByClassId, compareClassSchedule } = window.AdminData;
 
   const DAY_OPTS = ['一','二','三','四','五','六','日'];
@@ -85,8 +85,8 @@
     };
   }
 
-  /** 渲染堂次管理表格（inline 逐列儲存，改一堂不整面板重整） */
-  function renderSessionsTable(sb, area, sessions) {
+  /** 渲染堂次管理表格（inline 逐列儲存，改一堂不整面板重整；刪除則重抓整班堂次重繪表格） */
+  function renderSessionsTable(sb, area, sessions, classRef) {
     if (!sessions.length) {
       area.innerHTML = '<p class="buke-empty" style="font-size:13px">尚無堂次資料。</p>';
       return;
@@ -109,6 +109,7 @@
             <td style="padding:5px 8px"><input type="checkbox" class="f-sheld" ${s.is_held ? 'checked' : ''}></td>
             <td style="padding:5px 8px">
               <button class="buke-btn small btn-save-session" style="font-size:13px">儲存</button>
+              <button class="buke-btn buke-btn-danger small btn-delete-session" style="font-size:13px">刪除</button>
               <span class="s-msg" style="font-size:13px;margin-left:6px"></span>
             </td>
           </tr>`).join('')}
@@ -130,6 +131,33 @@
         } catch (e) {
           msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
         } finally {
+          btn.disabled = false;
+        }
+      });
+
+      row.querySelector('.btn-delete-session').addEventListener('click', async () => {
+        const btn   = row.querySelector('.btn-delete-session');
+        const msgEl = row.querySelector('.s-msg');
+        const confirmMsg = s.is_held
+          ? '這堂已有出缺勤/補課資料，刪除後這些紀錄會一併消失且無法復原，確定要刪除嗎？'
+          : '確定要刪除這堂嗎？';
+        if (!confirm(confirmMsg)) return;
+        btn.disabled = true; msgEl.textContent = '刪除中…'; msgEl.style.color = 'var(--muted)';
+        try {
+          await deleteSession(sb, s.id);
+          const updated = await fetchSessions(sb, classRef);
+          // 刪除後重新編號「第幾堂」，維持連續（1,2,3…），避免畫面上出現跳號造成誤會；
+          // week_num 只是顯示標籤，這裡重排不影響任何缺課/補課/結業的統計邏輯。
+          for (let idx = 0; idx < updated.length; idx++) {
+            const wantedNum = idx + 1;
+            if (updated[idx].week_num !== wantedNum) {
+              await updateSession(sb, updated[idx].id, { week_num: wantedNum });
+              updated[idx].week_num = wantedNum;
+            }
+          }
+          renderSessionsTable(sb, area, updated, classRef);
+        } catch (e) {
+          msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
           btn.disabled = false;
         }
       });
@@ -386,7 +414,7 @@
       sessionsArea.innerHTML = '<p class="buke-empty" style="font-size:13px">載入中…</p>';
       try {
         const sessions = await fetchSessions(sb, cls.id);
-        renderSessionsTable(sb, sessionsArea, sessions);
+        renderSessionsTable(sb, sessionsArea, sessions, cls.id);
       } catch (e) {
         sessionsArea.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
       }

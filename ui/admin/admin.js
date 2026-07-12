@@ -170,6 +170,12 @@ async function updateSession(sb, id, fields) {
   if (error) throw new Error(`更新堂次失敗：${error.message}`);
 }
 
+/** 刪除單一堂次（ON DELETE CASCADE 會一併刪除該堂的 attendance／makeups，前端呼叫前務必先確認） */
+async function deleteSession(sb, id) {
+  const { error } = await sb.from('sessions').delete().eq('id', id);
+  if (error) throw new Error(`刪除堂次失敗：${error.message}`);
+}
+
 // ── 學員 ─────────────────────────────────────────────────────
 
 /** 取指定班所有學員（含休學），依組別/組號排列 */
@@ -226,7 +232,7 @@ if (typeof window !== 'undefined') {
     fetchClasses, fetchGroups, compareGroupNames, compareClassSchedule,
     updateClass, insertClass, archiveClass, activateClass,
     bindClassId, findClassByClassId,
-    fetchSessions, updateSession,
+    fetchSessions, updateSession, deleteSession,
     fetchMembersWithStatus, setMemberStatusLocal,
     fetchAssignments, upsertAssignment, deleteAssignment,
   };
