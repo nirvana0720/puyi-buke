@@ -173,11 +173,19 @@ body {
 }
 .buke-expand-btn:hover { background: var(--header); color: var(--header-tx); }
 
-/* ── 分頁標籤（改成藥丸按鈕，手機上文字多時會換行整個標籤、不會被壓到單字換行） ── */
-.buke-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }
+/* ── 分頁標籤（一體式分段控制：整組收在同一個淺色軌道裡，選中項目變長方圓角色塊，
+   項目間用虛線分隔；文字多時整個標籤一起換行，不會被壓到單字直排） ── */
+.buke-tabs {
+  display:flex; flex-wrap:wrap;
+  background:#F1EFE8; border-radius:10px; padding:3px; margin:6px 0 14px;
+}
 .buke-tab {
   font-size:15px; padding:9px 14px; cursor:pointer; color:var(--ink);
-  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-pill);
-  white-space:nowrap;
+  white-space:nowrap; border-right:1px dashed rgba(0,0,0,0.2);
 }
-.buke-tab.active { color:var(--header-tx); background:var(--header); border-color:var(--header); font-weight:500; }
+.buke-tab:last-child { border-right:none; }
+.buke-tab:has(+ .buke-tab.active) { border-right:none; }
+.buke-tab.active {
+  color:var(--header-tx); background:var(--header); font-weight:500;
+  border-radius:7px; border-right:none;
+}
