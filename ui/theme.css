@@ -173,19 +173,22 @@ body {
 }
 .buke-expand-btn:hover { background: var(--header); color: var(--header-tx); }
 
-/* ── 分頁標籤（一體式分段控制：整組收在同一個淺色軌道裡，選中項目變長方圓角色塊，
-   項目間用虛線分隔；文字多時整個標籤一起換行，不會被壓到單字直排） ── */
+/* ── 分頁標籤（改用 CSS Grid 固定 2 欄，不用 flex-wrap：
+   之前用 flex-wrap 讓標籤自然換行，手機上文字一多換行位置不固定，分隔線會斷在奇怪的地方、
+   看起來像排版壞掉。改成固定 2 欄格線後，不管文字長短，格子永遠對齊，分隔線一定連續。） ── */
 .buke-tabs {
-  display:flex; flex-wrap:wrap;
-  background:#F1EFE8; border-radius:10px; padding:3px; margin:6px 0 14px;
+  display:grid; grid-template-columns:repeat(2, 1fr);
+  background:#F1EFE8; border-radius:10px; overflow:hidden; margin:6px 0 14px;
 }
 .buke-tab {
-  font-size:15px; padding:9px 14px; cursor:pointer; color:var(--ink);
-  white-space:nowrap; border-right:1px dashed rgba(0,0,0,0.2);
+  font-size:14px; padding:12px 10px; cursor:pointer; color:var(--ink);
+  text-align:center; line-height:1.4;
+  border-right:1px dashed rgba(0,0,0,0.2);
+  border-bottom:1px dashed rgba(0,0,0,0.2);
 }
-.buke-tab:last-child { border-right:none; }
-.buke-tab:has(+ .buke-tab.active) { border-right:none; }
+.buke-tab:nth-child(2n)          { border-right:none; }
+.buke-tab:nth-last-child(-n+2)   { border-bottom:none; }
 .buke-tab.active {
   color:var(--header-tx); background:var(--header); font-weight:500;
-  border-radius:7px; border-right:none;
+  border-color:transparent;
 }
