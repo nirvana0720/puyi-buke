@@ -206,49 +206,27 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
     const tfrBtn  = document.getElementById(tfrBtnId);
     const tfrForm = document.getElementById(tfrFormId);
 
-    function setDim(el, dim) {
-      if (el) el.style.opacity = dim ? '0.45' : '';
-    }
-    function closeMakeup() {
-      if (!form) return;
-      form.style.display = 'none';
-      btn.textContent = `代為登記補課（${m.unregistered_absences.length} 堂）`;
-    }
     function closeTransfer() {
       tfrForm.style.display = 'none';
       tfrBtn.textContent = '代為日↔夜間調班補課';
     }
 
-    // 代為登記補課：開自己前先收起調班，並讓調班鍵淡化，避免搞錯正在操作哪一個
-    if (hasUnreg && btn && form && window.LeaderActions) {
+    // 代為登記補課：獨立全螢幕彈窗，不再跟調班鍵互相收合/淡化
+    if (hasUnreg && btn && window.LeaderActions) {
       btn.addEventListener('click', () => {
-        if (form.style.display === 'none') {
-          closeTransfer();
-          setDim(tfrBtn, true);
-          setDim(btn, false);
-          window.LeaderActions.renderProxyMakeupPicker(form, sb, m, leaderDbId);
-          form.style.display = '';
-          btn.textContent = '▲ 收起補課';
-        } else {
-          closeMakeup();
-          setDim(tfrBtn, false);
-        }
+        window.LeaderActions.renderProxyMakeupPicker(form, sb, m, leaderDbId);
       });
     }
 
-    // 代為調班：開自己前先收起補課，並讓補課鍵淡化
+    // 代為調班：維持原樣（本次不動）
     if (tfrBtn && tfrForm && window.LeaderActions) {
       tfrBtn.addEventListener('click', () => {
         if (tfrForm.style.display === 'none') {
-          closeMakeup();
-          setDim(btn, true);
-          setDim(tfrBtn, false);
           window.LeaderActions.renderProxyTransferForm(tfrForm, sb, m, leaderDbId, null);
           tfrForm.style.display = '';
           tfrBtn.textContent = '▲ 收起日↔夜間調班補課';
         } else {
           closeTransfer();
-          setDim(btn, false);
         }
       });
     }

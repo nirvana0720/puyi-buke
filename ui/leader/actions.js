@@ -2,9 +2,40 @@
 // 供 render.js 掛按鈕事件；呼叫 Supabase RPC 時帶 p_acting_leader_db_id
 'use strict';
 
+/** 代補課表單欄位＋送出按鈕的 body HTML（不含選堂次，那段由呼叫端視情況接在前面） */
+function buildProxyMakeupFieldsHtml() {
+  return `
+    <label style="display:block;margin-bottom:12px;font-size:16px">補課方式
+      <select name="method" class="buke-select" style="display:block;width:100%;margin-top:4px">
+        <option value="影音">影音</option>
+        <option value="精舍培訓課程">精舍培訓課程</option>
+      </select>
+    </label>
+    <label style="display:block;margin-bottom:12px;font-size:16px">預定補課日期
+      <input type="date" name="planned_date" required class="buke-input" style="display:block;width:100%;margin-top:4px">
+    </label>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <label style="flex:1;font-size:16px">時
+        <input type="number" name="hour" min="0" max="23" placeholder="時" class="buke-input" style="display:block;width:100%;margin-top:4px">
+      </label>
+      <label style="flex:1;font-size:16px">分
+        <input type="number" name="minute" min="0" max="59" value="0" class="buke-input" style="display:block;width:100%;margin-top:4px">
+      </label>
+    </div>
+    <label style="display:block;margin-bottom:16px;font-size:16px">
+      <input type="checkbox" name="earphone"> 借用耳機
+    </label>
+    <div class="proxy-msg" style="margin-bottom:10px;font-size:16px;color:var(--danger)"></div>
+    <div style="display:flex;gap:10px">
+      <button type="button" class="buke-btn proxy-submit">送出代登記</button>
+      <button type="button" class="buke-btn-ghost proxy-cancel">取消</button>
+    </div>
+  `;
+}
+
 /**
- * 在 formEl 內插入代補課表單（預填特定 sessionRef）
- * @param {HTMLElement} formEl       要注入表單的容器
+ * 開啟「代為登記補課」彈窗（bottom sheet）
+ * @param {HTMLElement} formEl       相容既有呼叫保留，內部不再使用
  * @param {object}      sb           Supabase client
  * @param {number}      memberDbId   目標學員的 members.id
  * @param {number}      sessionRef   預填的缺課堂次 id
@@ -12,73 +43,67 @@
  * @param {Function}    onDone       成功後回呼
  */
 function renderProxyMakeupForm(formEl, sb, memberDbId, sessionRef, leaderDbId, onDone) {
-  formEl.innerHTML = `
-    <div style="padding:8px 0">
-      <label style="display:block;margin-bottom:6px">補課方式
-        <select name="method" style="margin-left:8px">
-          <option value="影音">影音</option>
-          <option value="精舍培訓課程">精舍培訓課程</option>
-        </select>
-      </label>
-      <label style="display:block;margin-bottom:6px">預定補課日期
-        <input type="date" name="planned_date" required style="margin-left:8px">
-      </label>
-      <div style="display:flex;gap:8px;margin-bottom:6px">
-        <label>時 <input type="number" name="hour" min="0" max="23" placeholder="時" style="width:60px"></label>
-        <label>分 <input type="number" name="minute" min="0" max="59" value="0" style="width:60px"></label>
-      </div>
-      <label style="display:block;margin-bottom:8px"><input type="checkbox" name="earphone"> 借用耳機</label>
-      <button type="button" class="buke-btn primary proxy-submit">送出代登記</button>
-      <span class="proxy-msg" style="margin-left:8px;font-size:0.9em;color:var(--danger)"></span>
-    </div>
-  `;
+  const sheet = window.LeaderModal.openSheet({
+    title: '代為登記補課',
+    bodyHtml: buildProxyMakeupFieldsHtml(),
+    onMount(panelEl) {
+      const msgEl = panelEl.querySelector('.proxy-msg');
 
-  formEl.querySelector('.proxy-submit').addEventListener('click', async () => {
-    const method      = formEl.querySelector('[name=method]').value;
-    const plannedDate = formEl.querySelector('[name=planned_date]').value;
-    const hour        = String(formEl.querySelector('[name=hour]').value || '0').padStart(2, '0');
-    const minute      = String(formEl.querySelector('[name=minute]').value || '0').padStart(2, '0');
-    const earphone    = formEl.querySelector('[name=earphone]').checked;
-    const msgEl       = formEl.querySelector('.proxy-msg');
+      panelEl.querySelector('.proxy-cancel').addEventListener('click', () => sheet.close());
 
-    if (!plannedDate) { msgEl.textContent = '請填入預定日期。'; return; }
+      panelEl.querySelector('.proxy-submit').addEventListener('click', async () => {
+        const method      = panelEl.querySelector('[name=method]').value;
+        const plannedDate = panelEl.querySelector('[name=planned_date]').value;
+        const hour        = String(panelEl.querySelector('[name=hour]').value || '0').padStart(2, '0');
+        const minute      = String(panelEl.querySelector('[name=minute]').value || '0').padStart(2, '0');
+        const earphone    = panelEl.querySelector('[name=earphone]').checked;
 
-    const plannedSlot = `${hour}:${minute}`;
-    msgEl.textContent = '送出中…';
+        if (!plannedDate) { msgEl.textContent = '請填入預定日期。'; return; }
 
-    try {
-      const { error } = await sb.rpc('register_makeup', {
-        p_member_db_id:        memberDbId,
-        p_session_ref:         sessionRef,
-        p_method:              method,
-        p_earphone:            earphone,
-        p_planned_date:        plannedDate,
-        p_planned_slot:        plannedSlot,
-        p_acting_leader_db_id: leaderDbId,
+        const plannedSlot = `${hour}:${minute}`;
+        msgEl.style.color = 'var(--muted)';
+        msgEl.textContent = '送出中…';
+
+        try {
+          const { error } = await sb.rpc('register_makeup', {
+            p_member_db_id:        memberDbId,
+            p_session_ref:         sessionRef,
+            p_method:              method,
+            p_earphone:            earphone,
+            p_planned_date:        plannedDate,
+            p_planned_slot:        plannedSlot,
+            p_acting_leader_db_id: leaderDbId,
+          });
+          if (error) throw new Error(error.message);
+          msgEl.style.color = 'var(--ok)';
+          msgEl.textContent = '✓ 已登記';
+          onDone && onDone();
+          sheet.close();
+        } catch (e) {
+          msgEl.style.color = 'var(--danger)';
+          msgEl.textContent = `❌ ${e.message}`;
+        }
       });
-      if (error) throw new Error(error.message);
-      msgEl.style.color = 'var(--ok)';
-      msgEl.textContent = '✓ 已登記';
-      onDone && onDone();
-    } catch (e) {
-      msgEl.style.color = 'var(--danger)';
-      msgEl.textContent = `❌ ${e.message}`;
-    }
+    },
   });
+
+  return sheet;
 }
 
 /**
- * 在 formEl 內插入缺課堂次選擇器（從 row.unregistered_absences 挑一堂）
- * 選定後展開 renderProxyMakeupForm
- * @param {HTMLElement} formEl
+ * 開啟「代為登記補課」彈窗，若學員有多筆未登記缺課堂次，先在彈窗最上方讓學長選一堂
+ * （只有 1 筆時直接開表單，不用多選一次）
+ * @param {HTMLElement} formEl     相容既有呼叫保留，內部不再使用
  * @param {object}      sb
- * @param {object}      row       StudentRow（含 unregistered_absences）
+ * @param {object}      row        StudentRow（含 unregistered_absences）
  * @param {number}      leaderDbId
  */
 function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
   const absences = row.unregistered_absences || [];
-  if (!absences.length) {
-    formEl.innerHTML = '<span style="font-size:0.9em;color:var(--muted)">無未登記缺課堂次。</span>';
+  if (!absences.length) return;
+
+  if (absences.length === 1) {
+    renderProxyMakeupForm(formEl, sb, row.id, absences[0].session_ref, leaderDbId, null);
     return;
   }
 
@@ -86,25 +111,63 @@ function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
     `<option value="${a.session_ref}">${a.session_date}（${a.mark}）</option>`
   ).join('');
 
-  formEl.innerHTML = `
-    <div style="padding:6px 0">
-      <label>選擇缺課堂次
-        <select name="pick_session" style="margin-left:8px">${opts}</select>
-      </label>
-      <div id="pick-sub-${row.id}" style="margin-top:8px"></div>
-    </div>
+  const bodyHtml = `
+    <label style="display:block;margin-bottom:14px;font-size:16px">選擇缺課堂次
+      <select name="pick_session" class="buke-select" style="display:block;width:100%;margin-top:4px">${opts}</select>
+    </label>
+    ${buildProxyMakeupFieldsHtml()}
   `;
 
-  const selectEl = formEl.querySelector('[name=pick_session]');
-  const subEl = document.getElementById(`pick-sub-${row.id}`);
+  let sessionRef = parseInt(absences[0].session_ref, 10);
 
-  function paintForm() {
-    const sessionRef = parseInt(selectEl.value, 10);
-    renderProxyMakeupForm(subEl, sb, row.id, sessionRef, leaderDbId, null);
-  }
+  const sheet = window.LeaderModal.openSheet({
+    title: '代為登記補課',
+    bodyHtml,
+    onMount(panelEl) {
+      const msgEl = panelEl.querySelector('.proxy-msg');
 
-  selectEl.addEventListener('change', paintForm);
-  paintForm(); // 只有一堂或預設第一堂時，選了就直接看到表單，不用多按一次確認
+      panelEl.querySelector('[name=pick_session]').addEventListener('change', (e) => {
+        sessionRef = parseInt(e.target.value, 10);
+      });
+
+      panelEl.querySelector('.proxy-cancel').addEventListener('click', () => sheet.close());
+
+      panelEl.querySelector('.proxy-submit').addEventListener('click', async () => {
+        const method      = panelEl.querySelector('[name=method]').value;
+        const plannedDate = panelEl.querySelector('[name=planned_date]').value;
+        const hour        = String(panelEl.querySelector('[name=hour]').value || '0').padStart(2, '0');
+        const minute      = String(panelEl.querySelector('[name=minute]').value || '0').padStart(2, '0');
+        const earphone    = panelEl.querySelector('[name=earphone]').checked;
+
+        if (!plannedDate) { msgEl.textContent = '請填入預定日期。'; return; }
+
+        const plannedSlot = `${hour}:${minute}`;
+        msgEl.style.color = 'var(--muted)';
+        msgEl.textContent = '送出中…';
+
+        try {
+          const { error } = await sb.rpc('register_makeup', {
+            p_member_db_id:        row.id,
+            p_session_ref:         sessionRef,
+            p_method:              method,
+            p_earphone:            earphone,
+            p_planned_date:        plannedDate,
+            p_planned_slot:        plannedSlot,
+            p_acting_leader_db_id: leaderDbId,
+          });
+          if (error) throw new Error(error.message);
+          msgEl.style.color = 'var(--ok)';
+          msgEl.textContent = '✓ 已登記';
+          sheet.close();
+        } catch (e) {
+          msgEl.style.color = 'var(--danger)';
+          msgEl.textContent = `❌ ${e.message}`;
+        }
+      });
+    },
+  });
+
+  return sheet;
 }
 
 /**

@@ -223,24 +223,16 @@ function buildUnregisteredSection(items, mode, leaderDbId, sb) {
     <th style="padding:6px 8px;text-align:left">操作</th>
   </tr></thead>`;
 
-  /** 掛「代為登記補課」按鈕事件（單一列） */
+  /** 掛「代為登記補課」按鈕事件（單一列）：直接開全螢幕彈窗 */
   function bindProxyBtn(row, abs) {
     const btn  = document.getElementById(`proxy-btn-${row.id}-${abs.session_ref}`);
     const form = document.getElementById(`proxy-form-${row.id}-${abs.session_ref}`);
-    if (btn && form && window.LeaderActions) {
+    if (btn && window.LeaderActions) {
       btn.addEventListener('click', () => {
-        if (form.style.display === 'none') {
-          window.LeaderActions.renderProxyMakeupForm(form, sb, row.id, abs.session_ref, leaderDbId, () => {
-            form.style.display = 'none';
-            btn.textContent = '已登記 ✓';
-            btn.disabled = true;
-          });
-          form.style.display = '';
-          btn.textContent = '▲ 收起';
-        } else {
-          form.style.display = 'none';
-          btn.textContent = '代為登記補課';
-        }
+        window.LeaderActions.renderProxyMakeupForm(form, sb, row.id, abs.session_ref, leaderDbId, () => {
+          btn.textContent = '已登記 ✓';
+          btn.disabled = true;
+        });
       });
     }
   }
