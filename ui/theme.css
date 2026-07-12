@@ -10,6 +10,7 @@
   --ink:       #2C2C2A;   /* 主文字 */
   --muted:     #8A7F70;   /* 次要文字 */
   --line:      #E7DECE;   /* 分隔線 */
+  --surface-alt: rgba(0,0,0,0.06); /* 表格表頭底色（半透明，任何背景色上都看得出來） */
 
   --ok-bg:#EAF3DE; --ok-tx:#27500A; --ok-bar:#639922; --ok-line:#C0DD97;
   --makeup-bg:#E1F5EE; --makeup-tx:#085041; --makeup-line:#9FE1CB;
@@ -152,6 +153,16 @@ body {
   background: var(--makeup-bg); border-left: 4px solid var(--makeup-tx);
 }
 .buke-section-block.makeup .buke-section { color: var(--makeup-tx); }
+
+/* ── 看板表格：表頭底色＋每列分隔線＋斑馬紋，手機上區隔清楚 ── */
+.buke-table { width:100%; border-collapse:collapse; }
+.buke-table thead th {
+  background: rgba(0,0,0,0.06);
+  border-bottom: 2px solid rgba(0,0,0,0.12);
+}
+.buke-table tbody tr { border-bottom: 1px solid rgba(0,0,0,0.08); }
+.buke-table tbody tr:nth-child(even) { background: rgba(0,0,0,0.03); }
+.buke-table tbody tr:last-child { border-bottom: none; }
 
 /* 展開清單按鈕（缺課尚未登記補課：預設只顯示前 5 筆） */
 .buke-expand-btn {

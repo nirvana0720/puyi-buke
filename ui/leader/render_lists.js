@@ -112,10 +112,11 @@ function buildRedLightList(active, mode) {
 
   const showGroup = mode === 'class';
   const table = document.createElement('table');
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:0.92em;margin-bottom:12px';
+  table.className = 'buke-table';
+  table.style.cssText = 'font-size:0.92em;margin-bottom:12px';
 
   const groupTh = showGroup ? '<th style="padding:6px 8px;text-align:left">組別</th>' : '';
-  table.innerHTML = `<thead><tr style="background:var(--surface-alt)">
+  table.innerHTML = `<thead><tr>
     ${groupTh}
     <th style="padding:6px 8px;text-align:left">姓名</th>
     <th style="padding:6px 8px;text-align:left">缺課堂數</th>
@@ -157,10 +158,11 @@ function buildUrgentSection(items, mode) {
   wrap.appendChild(h);
 
   const table = document.createElement('table');
-  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:0.92em;margin-bottom:12px';
+  table.className = 'buke-table';
+  table.style.cssText = 'font-size:0.92em;margin-bottom:12px';
 
   const groupTh = showGroup ? '<th style="padding:6px 8px;text-align:left">組別</th>' : '';
-  table.innerHTML = `<thead><tr style="background:var(--surface-alt)">
+  table.innerHTML = `<thead><tr>
     <th style="padding:6px 8px;text-align:left">姓名</th>
     ${groupTh}
     <th style="padding:6px 8px;text-align:left">缺課日期</th>
@@ -214,7 +216,7 @@ function buildUnregisteredSection(items, mode, leaderDbId, sb) {
   wrap.appendChild(h);
 
   const groupTh = showGroup ? '<th style="padding:6px 8px;text-align:left">組別</th>' : '';
-  const theadHtml = `<thead><tr style="background:var(--surface-alt)">
+  const theadHtml = `<thead><tr>
     <th style="padding:6px 8px;text-align:left">姓名</th>
     ${groupTh}
     <th style="padding:6px 8px;text-align:left">缺課日期</th>
@@ -265,7 +267,8 @@ function buildUnregisteredSection(items, mode, leaderDbId, sb) {
    */
   function buildTable(list, overdue) {
     const table = document.createElement('table');
-    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:0.92em;margin-bottom:8px';
+    table.className = 'buke-table';
+    table.style.cssText = 'font-size:0.92em;margin-bottom:8px';
     table.innerHTML = theadHtml;
 
     const visibleList = overdue ? list : list.slice(0, VISIBLE_COUNT);
