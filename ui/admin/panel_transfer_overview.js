@@ -31,7 +31,6 @@
   // ── RPC / 資料操作 ──────────────────────────────────────────
 
   const deleteTransfer = id => _sb.from('transfers').delete().eq('id', id);
-  const updateTransfer = (id, f) => _sb.from('transfers').update(f).eq('id', id);
 
   // ── 面板入口 ────────────────────────────────────────────────
 
@@ -148,7 +147,7 @@
       editArea.querySelector('.btn-ok-attend').addEventListener('click', async () => {
         const lm = editArea.querySelector('.f-late').value;
         try {
-          const { error } = await updateTransfer(r.id, { status:'已出席', attended_at: new Date().toISOString(), late_mark: lm });
+          const { error } = await _sb.rpc('admin_transfer_mark_attended', { p_transfer_id: r.id, p_late_mark: lm });
           if (error) throw new Error(error.message);
           await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
         } catch (e) { editArea.querySelector('.ic-result').textContent = `❌ ${e.message}`; }
@@ -156,7 +155,7 @@
     });
     card.querySelector('.btn-tr-absent')?.addEventListener('click', () =>
       window.PanelMakeupOverview.inlineConfirm(card, `確定將 ${r._name} 的日夜補（${r._from_date}）標為未到？`, async () => {
-        const { error } = await updateTransfer(r.id, { status:'未到' });
+        const { error } = await _sb.rpc('admin_transfer_mark_absent', { p_transfer_id: r.id });
         if (error) throw new Error(error.message);
         await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
       }));
