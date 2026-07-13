@@ -1,5 +1,5 @@
-// 職責：現場登記共用：判斷輸入框是編號還是姓名、撞名時的挑人畫面——補課／培訓補課／日夜補
-// 三個表單共用，不要各寫一份
+// 職責：現場登記共用：判斷輸入框是編號還是姓名、即時姓名搜尋建議清單、撞名時的挑人畫面——
+// 補課／培訓補課／日夜補三個表單共用，不要各寫一份
 
 'use strict';
 
@@ -7,6 +7,14 @@ async function kioskLookupMemberByName(sb, staffId, name) {
   const { data, error } = await sb.rpc('kiosk_lookup_member_by_name', { p_staff_id: staffId, p_name: name });
   if (error) throw new Error(error.message);
   return data || { found: false };
+}
+
+async function kioskSearchMembersByName(sb, staffId, query, limit) {
+  const { data, error } = await sb.rpc('kiosk_search_members_by_name', {
+    p_staff_id: staffId, p_query: query, p_limit: limit || 15,
+  });
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
 /**
@@ -43,16 +51,8 @@ async function kioskSmartLookup(sb, staffId, rawInput, { resultEl, msgEl, onFoun
 
   if (byName.multiple && (byName.candidates || []).length) {
     renderNameCandidates(resultEl, byName.candidates, async (candidateMemberId) => {
-      resultEl.innerHTML = '<p style="color:var(--muted);font-size:14px">查詢中…</p>';
-      const result = await window.KioskLogic.kioskLookupMember(sb, staffId, candidateMemberId);
-      if (!result.found) {
-        resultEl.innerHTML = '';
-        msgEl.textContent = `查無學員：${result.reason || ''}`;
-        msgEl.style.color = 'var(--danger-tx)';
-        return;
-      }
-      onFound(result);
-    });
+      await _resolveAndFound(sb, staffId, candidateMemberId, { resultEl, msgEl, onFound });
+    }, `查到 ${byName.candidates.length} 位同名學員，請確認是哪一位：`);
     return;
   }
 
@@ -60,12 +60,24 @@ async function kioskSmartLookup(sb, staffId, rawInput, { resultEl, msgEl, onFoun
   msgEl.style.color = 'var(--danger-tx)';
 }
 
-/** 撞名挑人畫面：大按鈕（姓名＋班別），長輩義工用點的、不用打字挑、不用看下拉選單 */
-function renderNameCandidates(container, candidates, onPick) {
+/** 用 member_id 查完整資料→找不到就顯示錯誤→找到就 onFound，供撞名點選、即時搜尋點選共用 */
+async function _resolveAndFound(sb, staffId, memberId, { resultEl, msgEl, onFound }) {
+  resultEl.innerHTML = '<p style="color:var(--muted);font-size:14px">查詢中…</p>';
+  const result = await window.KioskLogic.kioskLookupMember(sb, staffId, memberId);
+  if (!result.found) {
+    resultEl.innerHTML = '';
+    msgEl.textContent = `查無學員：${result.reason || ''}`;
+    msgEl.style.color = 'var(--danger-tx)';
+    return;
+  }
+  onFound(result);
+}
+
+/** 撞名／即時搜尋共用的挑人畫面：大按鈕（姓名＋班別），長輩義工用點的、不用打字挑、不用看下拉選單
+ *  introText 可選：撞名清單需要「查到 N 位同名學員」提示文字，即時建議清單不需要 */
+function renderNameCandidates(container, candidates, onPick, introText) {
   container.innerHTML = `
-    <div style="font-size:14px;color:var(--muted);margin-bottom:8px">
-      查到 ${candidates.length} 位同名學員，請確認是哪一位：
-    </div>
+    ${introText ? `<div style="font-size:14px;color:var(--muted);margin-bottom:8px">${introText}</div>` : ''}
     <div style="display:flex;flex-direction:column;gap:8px">
       ${candidates.map((c, i) => `
         <button type="button" class="buke-btn buke-btn-ghost cand-btn" data-i="${i}"
@@ -78,6 +90,34 @@ function renderNameCandidates(container, candidates, onPick) {
   });
 }
 
+/**
+ * 掛在輸入框上：打字（含連續 9 碼數字時不觸發，因為那是編號路徑，交給 submit 送出）就 debounce
+ * 300ms 後查 kiosk_search_members_by_name，結果顯示在 suggestEl（大按鈕清單，沿用撞名同一套
+ * renderNameCandidates）。點下去＝直接完成查詢：清空輸入框跟建議清單、呼叫 onFound。
+ * 查詢失敗（網路等）靜默略過，不影響義工改用「打完整姓名按查詢」或「打編號」這兩條備用路徑。
+ */
+function attachLiveNameSearch(sb, staffId, { inputEl, suggestEl, resultEl, msgEl, onFound }) {
+  let timer = null;
+  inputEl.addEventListener('input', () => {
+    clearTimeout(timer);
+    const raw    = inputEl.value;
+    const digits = (raw.match(/\d{9}/) || [])[0];
+    const query  = raw.trim();
+    if (digits || !query) { suggestEl.innerHTML = ''; return; }
+    timer = setTimeout(async () => {
+      try {
+        const list = await kioskSearchMembersByName(sb, staffId, query);
+        if (!list.length) { suggestEl.innerHTML = ''; return; }
+        renderNameCandidates(suggestEl, list, (memberId) => {
+          suggestEl.innerHTML = '';
+          inputEl.value = '';
+          _resolveAndFound(sb, staffId, memberId, { resultEl, msgEl, onFound });
+        });
+      } catch (_) { /* 即時建議失敗就靜默略過 */ }
+    }, 300);
+  });
+}
+
 if (typeof window !== 'undefined') {
-  window.KioskNameSearch = { kioskSmartLookup };
+  window.KioskNameSearch = { kioskSmartLookup, attachLiveNameSearch };
 }
