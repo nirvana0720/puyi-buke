@@ -122,17 +122,25 @@
       });
     }
 
+    // 'F' = 停課／颱風假專用代碼（全班同一天都寫 F）：這天不算「已上課」，不建任何出缺勤紀錄，
+    // 避免被誤判成整班缺席、產生一堆假的補課義務。跟真正無法辨識的代碼分開判斷。
     const heldDates = dateCols
-      .filter(({ dateStr }) => members.some(m => m.marks[dateStr] !== ''))
+      .filter(({ dateStr }) => members.some(m => m.marks[dateStr] !== '' && m.marks[dateStr] !== 'F'))
       .map(({ dateStr }) => dateStr)
       .sort();
 
     const allDates = dateCols.map(({ dateStr }) => dateStr).sort();
 
+    const cancelledDates = dateCols
+      .filter(({ dateStr }) => members.some(m => m.marks[dateStr] === 'F'))
+      .map(({ dateStr }) => dateStr)
+      .sort();
+
     return {
       members,
       heldDates,
       allDates,
+      cancelledDates,
       attendCount: members.length * heldDates.length,
       hasDateCols: dateCols.length > 0,
     };
@@ -246,8 +254,11 @@
       if (!parsed.members.length) {
         msgEl.innerHTML = '<span style="color:var(--danger-tx)">❌ 解析不到有效學員列（需有學員編號與姓名）</span>'; return;
       }
+      const futureNote = parsed.hasDateCols
+        ? `另有 ${parsed.allDates.length - parsed.heldDates.length - parsed.cancelledDates.length} 堂未來堂次${parsed.cancelledDates.length ? `、${parsed.cancelledDates.length} 天停課／颱風假` : ''}`
+        : '';
       msgEl.innerHTML = parsed.hasDateCols
-        ? `<span style="color:var(--ok-tx)">✅ 解析到 ${parsed.members.length} 位學員、${parsed.heldDates.length} 個已上課次（另有 ${parsed.allDates.length - parsed.heldDates.length} 堂未來堂次）</span>`
+        ? `<span style="color:var(--ok-tx)">✅ 解析到 ${parsed.members.length} 位學員、${parsed.heldDates.length} 個已上課次（${futureNote}）</span>`
         : `<span style="color:var(--ok-tx)">✅ 解析到 ${parsed.members.length} 筆學員</span>`;
       renderPreview(sb, container, parsed);
     } catch (e) {
@@ -256,11 +267,11 @@
   }
 
   function renderPreview(sb, container, parsed) {
-    const { members, heldDates, allDates, attendCount, hasDateCols } = parsed;
+    const { members, heldDates, allDates, cancelledDates, attendCount, hasDateCols } = parsed;
     const prevEl  = container.querySelector('#imp-preview');
     const sample  = members.slice(0, 5);
     const hasRole = members.some(m => m.role);
-    const futureCount = allDates.length - heldDates.length;
+    const futureCount = allDates.length - heldDates.length - cancelledDates.length;
 
     prevEl.innerHTML = `
       <div class="buke-card">
@@ -271,10 +282,12 @@
           <span style="margin-right:18px">👤 ${members.length} 位學員</span>
           <span style="margin-right:18px">📅 ${heldDates.length} 個已上課次</span>
           <span style="margin-right:18px">🗓️ ${futureCount} 堂未來堂次</span>
+          ${cancelledDates.length ? `<span style="margin-right:18px">🌀 ${cancelledDates.length} 天停課／颱風假</span>` : ''}
           <span>📝 ${attendCount} 筆出缺勤</span>
         </div>
         <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">
           已上課次：${heldDates.join('、') || '（無）'}
+          ${cancelledDates.length ? `<br>停課／颱風假（不建出缺勤）：${cancelledDates.join('、')}` : ''}
         </div>` : ''}
 
         <div style="overflow-x:auto">
@@ -339,7 +352,7 @@
         '<div class="buke-msg err">❌ 請先選目標班別</div>'; return;
     }
 
-    const { members, heldDates, allDates, hasDateCols } = parsed;
+    const { members, heldDates, allDates, cancelledDates, hasDateCols } = parsed;
     const source     = hasDateCols && prevEl.querySelector('#imp-as-manual')?.checked ? 'manual' : 'api';
     const confirmBtn = prevEl.querySelector('#imp-confirm');
     const progEl     = prevEl.querySelector('#imp-progress');
@@ -492,10 +505,11 @@
 
       // 完成
       const roleMsg = withRole.length ? `（含 ${withRole.length} 筆角色指派）` : '';
-      const futureCount = allDates.length - heldDates.length;
+      const futureCount = allDates.length - heldDates.length - cancelledDates.length;
+      const cancelledMsg = cancelledDates.length ? `、${cancelledDates.length} 天停課／颱風假（未建出缺勤）` : '';
       resultEl.innerHTML = hasDateCols
         ? `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
-             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${roleMsg}。
+             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${cancelledMsg}${roleMsg}。
            </div>`
         : `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
              ✅ 已匯入 ${members.length} 位學員${roleMsg}。
