@@ -12,6 +12,10 @@
 (function () {
   const { fetchClasses, compareClassSchedule } = window.AdminData;
 
+  let _allRows     = [];
+  let _scheduleMap = new Map();
+  let _searchName  = '';
+
   async function loadRiskPanel(sb, container) {
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
@@ -24,8 +28,11 @@
         container.innerHTML = '<p class="buke-empty">目前沒有進行中的班別資料。</p>';
         return;
       }
-      const scheduleMap = new Map(classes.map(c => [c.id, c]));
-      renderRisk(data, container, scheduleMap);
+      _allRows     = data;
+      _scheduleMap = new Map(classes.map(c => [c.id, c]));
+      _searchName  = '';
+      renderRiskShell(container);
+      renderRiskBody(container);
     } catch (e) {
       container.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
     }
@@ -49,17 +56,17 @@
       || (totalCredit + remaining + stillFixable) < needCredit;
   }
 
-  function renderRisk(rows, container, scheduleMap) {
+  /** 姓名篩選後的資料來源，供 renderRiskBody／CSV 匯出共用 */
+  function filteredRows() {
+    return _allRows.filter(r => !_searchName || r.name.toLowerCase().includes(_searchName));
+  }
+
+  /** 分燈號＋依班分組（跟畫面上看到的一致，供表格渲染／CSV 匯出共用，避免各算一份） */
+  function computeRiskGroups(rows) {
     // 分燈號：已達標(grad_ok) 一律不顯示；紅＝結業已不可逆；黃＝逾期未補剛好3堂（最後緩衝）
     const redRows    = rows.filter(r => !r.grad_ok && isUnrecoverable(r));
     const yellowRows = rows.filter(r => !r.grad_ok && !isUnrecoverable(r) && r.overdue_absent === 3);
     const atRisk     = [...redRows, ...yellowRows];
-
-    if (!atRisk.length) {
-      container.innerHTML = `
-        <p class="buke-empty" style="padding:40px 0">🎉 目前沒有結業風險或逼近門檻的學員，無風險名單。</p>`;
-      return;
-    }
 
     // 依班分組
     const classMap = new Map();
@@ -73,9 +80,12 @@
     }
     // 依星期一～日排序（同星期日間排夜間前面），下面兩個迴圈（CSV／畫面）共用這個排序後的陣列
     const sortedClassEntries = [...classMap.entries()].sort(([refA], [refB]) =>
-      compareClassSchedule(scheduleMap.get(refA), scheduleMap.get(refB)));
+      compareClassSchedule(_scheduleMap.get(refA), _scheduleMap.get(refB)));
 
-    // CSV 匯出資料
+    return { atRisk, sortedClassEntries };
+  }
+
+  function buildCsv(sortedClassEntries) {
     const csvRows = [['班別','燈號','姓名','組別','出席','缺課(未補)','補課','逾期未補日期','原因']];
     for (const [, cls] of sortedClassEntries) {
       for (const r of [...cls.red, ...cls.yellow]) {
@@ -88,18 +98,57 @@
         csvRows.push([cls.class_name, light, r.name, r.group_id || '', r.phys, r.absent, r.makeup, dates, reason]);
       }
     }
+    return csvRows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  }
 
-    let html = `
+  /** 篩選說明列＋姓名搜尋框＋匯出 CSV 按鈕，只執行一次；#risk-content 交給 renderRiskBody 反覆重繪 */
+  function renderRiskShell(container) {
+    container.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <p style="font-size:14px;color:var(--muted);margin:0">
           🔴 逾期未補超過 3 堂（不可逆）　🟡 逾期未補剛好 3 堂（最後緩衝，再逾期一堂就不可逆）
           已達標或緩衝充足的不顯示。
         </p>
+        <input id="risk-search-name" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:34px">
         <button id="btn-export-risk" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:5px 14px;min-height:34px">
           匯出 CSV
         </button>
-      </div>`;
+      </div>
+      <div id="risk-content"></div>`;
 
+    container.querySelector('#risk-search-name').addEventListener('input', e => {
+      _searchName = e.target.value.trim().toLowerCase();
+      renderRiskBody(container);
+    });
+
+    container.querySelector('#btn-export-risk').addEventListener('click', () => {
+      const { sortedClassEntries } = computeRiskGroups(filteredRows());
+      const csv  = buildCsv(sortedClassEntries);
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `結業風險總表_${new Date().toLocaleDateString('sv-SE')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  /** 依目前 _searchName 篩選後重繪 #risk-content，不動搜尋框所在的外層 */
+  function renderRiskBody(container) {
+    const contentEl = container.querySelector('#risk-content');
+    if (!contentEl) return;
+
+    const { atRisk, sortedClassEntries } = computeRiskGroups(filteredRows());
+
+    if (!atRisk.length) {
+      contentEl.innerHTML = _searchName
+        ? `<p class="buke-empty" style="padding:40px 0">查無符合姓名的風險學員。</p>`
+        : `<p class="buke-empty" style="padding:40px 0">🎉 目前沒有結業風險或逼近門檻的學員，無風險名單。</p>`;
+      return;
+    }
+
+    let html = '';
     for (const [, cls] of sortedClassEntries) {
       html += `<div style="margin-bottom:24px">
         <div class="buke-section" style="margin-bottom:8px">${cls.class_name}</div>
@@ -128,20 +177,7 @@
       html += `</tbody></table></div>`;
     }
 
-    container.innerHTML = html;
-
-    container.querySelector('#btn-export-risk').addEventListener('click', () => {
-      const csv = csvRows.map(row =>
-        row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
-      ).join('\n');
-      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url;
-      a.download = `結業風險總表_${new Date().toLocaleDateString('sv-SE')}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
+    contentEl.innerHTML = html;
   }
 
   function riskRow(r, type) {
