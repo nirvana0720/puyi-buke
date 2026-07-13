@@ -448,7 +448,11 @@
         const sessionIdMap = Object.fromEntries((dbSessions || []).map(r => [r.date, r.id]));
 
         // 5. upsert attendance（每位學員 × 每個已上課次）
+        // 出缺勤代碼只認 7 種官方標記，其餘一律視為無法辨識，匯入前先擋下並明確列出
+        // 「哪位學員、哪一天、寫了什麼」，不要讓資料庫的 CHECK 限制擋下整批卻看不出是哪一筆。
+        const VALID_MARKS = new Set(['V', 'L', 'ML', 'M', 'A', 'O', 'LL']);
         const attendRows = [];
+        const badMarks = [];
         for (const m of members) {
           const membRef = memberIdMap[m.member_id];
           if (!membRef) continue;
@@ -456,6 +460,10 @@
             const sessRef = sessionIdMap[date];
             if (!sessRef) continue;
             const rawMark = m.marks[date] ?? '';
+            if (rawMark && !VALID_MARKS.has(rawMark)) {
+              badMarks.push(`${m.name}（${date}）寫了「${rawMark}」`);
+              continue;
+            }
             attendRows.push({
               member_ref:  membRef,
               session_ref: sessRef,
@@ -463,6 +471,13 @@
               source,
             });
           }
+        }
+        if (badMarks.length) {
+          throw new Error(
+            `偵測到 ${badMarks.length} 筆無法辨識的出缺勤代碼（只認 V/L/ML/M/A/O/LL），已中止匯入，` +
+            `請到 Excel 修正下列儲存格後重新匯入：${badMarks.slice(0, 15).join('；')}` +
+            `${badMarks.length > 15 ? `…（還有 ${badMarks.length - 15} 筆）` : ''}`
+          );
         }
         attendRowsLen = attendRows.length;
 
