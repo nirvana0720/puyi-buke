@@ -53,6 +53,32 @@
     });
   }
 
+  // ── 黑名單日期列表渲染 ───────────────────────────────────
+
+  function renderBlackout(list, listEl) {
+    listEl.innerHTML = '';
+    if (!list.length) {
+      listEl.innerHTML = '<p style="color:var(--muted);font-size:14px;margin:6px 0">尚未設定黑名單日期。</p>';
+      return;
+    }
+    list.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
+      row.innerHTML = `
+        <span class="buke-badge" style="background:var(--warn-bg);color:var(--warn-tx);font-size:14px">
+          ${item.date}　${item.reason || ''}
+        </span>
+        <button class="buke-btn buke-btn-danger" style="font-size:13px;padding:4px 10px;min-height:32px">
+          刪除
+        </button>`;
+      row.querySelector('button').addEventListener('click', () => {
+        list.splice(i, 1);
+        renderBlackout(list, listEl);
+      });
+      listEl.appendChild(row);
+    });
+  }
+
   // ── 主面板 ───────────────────────────────────────────────
 
   async function loadMakeupRulesPanel(sb, container) {
@@ -69,8 +95,9 @@
     const mode       = row.makeup_earliest_mode || '下週一';
     const days       = row.makeup_earliest_days ?? 7;
     const slots      = Array.isArray(row.makeup_time_slots) ? [...row.makeup_time_slots] : [];
+    const blackoutDates = Array.isArray(row.makeup_blackout_dates) ? [...row.makeup_blackout_dates] : [];
     const notice     = row.makeup_notice || '';
-    const deadlineWk = row.makeup_deadline_weeks ?? 4;
+    const deadlineDays = row.makeup_deadline_days ?? 40;
     const warnOn     = (row.extra_json?.warn_out_of_range) !== false; // 預設 true
 
     container.innerHTML = `
@@ -136,18 +163,34 @@
       <div class="buke-card" style="margin-bottom:16px;background:var(--bg)">
         <div class="name" style="font-size:16px;font-weight:500;margin-bottom:6px">補課期限（全系統鎖定）</div>
         <p style="font-size:15px;color:var(--muted);margin:0">
-          下週一起 <strong style="color:var(--ink)">${deadlineWk} 週</strong> 內須完成補課，逾期視同缺席。
+          缺課日起 <strong style="color:var(--ink)">${deadlineDays} 天</strong>內須完成補課，逾期視同缺席。
           此欄位全系統統一，<strong>不可修改</strong>。
         </p>
       </div>
 
       <!-- §5 超範圍提醒開關 -->
-      <div class="buke-card" style="margin-bottom:20px">
+      <div class="buke-card" style="margin-bottom:16px">
         <label style="display:flex;align-items:center;gap:12px;cursor:pointer;font-size:15px">
           <input type="checkbox" id="chk-warn" ${warnOn ? 'checked' : ''}
                  style="width:20px;height:20px;flex-shrink:0;cursor:pointer">
           <span>學員登記補課若超出上方規定範圍，顯示提醒</span>
         </label>
+      </div>
+
+      <!-- §7 特定日期不開放補課 -->
+      <div class="buke-card" style="margin-bottom:20px">
+        <div class="name" style="font-size:16px;font-weight:500;margin-bottom:10px">特定日期不開放補課</div>
+        <div id="blackout-list"></div>
+
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增黑名單日期</summary>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
+            <input type="date" id="inp-blackout-date" class="buke-input" style="font-size:14px;min-height:36px">
+            <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：中元法會）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
+            <button id="btn-add-blackout" class="buke-btn" style="font-size:14px;padding:6px 14px;min-height:36px">加入</button>
+            <span id="blackout-err" style="font-size:13px;color:var(--danger-tx)"></span>
+          </div>
+        </details>
       </div>
 
       <!-- §6 儲存 -->
@@ -161,6 +204,24 @@
     // ── 時段列表初始化 ──────────────────────────────────
     const slotListEl = container.querySelector('#slot-list');
     renderSlots(slots, slotListEl, () => {});  // onChange 只在 save 時才讀最新 slots
+
+    // ── 黑名單日期列表初始化 ─────────────────────────────
+    const blackoutListEl = container.querySelector('#blackout-list');
+    renderBlackout(blackoutDates, blackoutListEl);
+
+    container.querySelector('#btn-add-blackout').addEventListener('click', () => {
+      const date   = container.querySelector('#inp-blackout-date').value;
+      const reason = container.querySelector('#inp-blackout-reason').value.trim();
+      const errEl  = container.querySelector('#blackout-err');
+      if (!date) { errEl.textContent = '請選擇日期'; return; }
+      const dup = blackoutDates.some(b => b.date === date);
+      if (dup) { errEl.textContent = '此日期已在黑名單中，請勿重複新增'; return; }
+      errEl.textContent = '';
+      blackoutDates.push({ date, reason: reason || null });
+      renderBlackout(blackoutDates, blackoutListEl);
+      container.querySelector('#inp-blackout-date').value = '';
+      container.querySelector('#inp-blackout-reason').value = '';
+    });
 
     // ── mode 單選 ↔ N 天輸入啟用 ────────────────────────
     container.querySelectorAll('input[name="mode"]').forEach(r => {
@@ -203,6 +264,7 @@
         makeup_earliest_mode: selMode,
         makeup_earliest_days: selMode === '缺課後N天' ? nDays : (row.makeup_earliest_days ?? 7),
         makeup_time_slots:    slots.length ? slots : null,
+        makeup_blackout_dates: blackoutDates.length ? blackoutDates : null,
         makeup_notice:        notice.trim() || null,
         extra_json:           { ...prevJson, warn_out_of_range: warnFlag },
       };

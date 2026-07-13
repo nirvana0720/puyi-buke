@@ -4,7 +4,7 @@
 'use strict';
 
 (function () {
-  let _sb, _makeups = [], _transfers = [], _filterClass = '', _filterType = 'all', _filterStatus = 'all';
+  let _sb, _makeups = [], _transfers = [], _filterClass = '', _filterType = 'all', _filterStatus = 'all', _searchName = '';
   const TODAY = new Date().toLocaleDateString('sv-SE');
 
   // ── 資料讀取 ────────────────────────────────────────────────
@@ -94,7 +94,12 @@
     const classNames = [...new Set([..._makeups, ..._transfers].map(r => r._class_name).filter(Boolean))].sort();
     const classOpts  = classNames.map(n => `<option>${n}</option>`).join('');
     container.innerHTML = `
+      <div class="buke-tabs">
+        <div class="buke-tab active" data-tab="overview">補課／調課總覽</div>
+        <div class="buke-tab" data-tab="late">逾期補課登記</div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+        <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
         <select id="mo-type" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">補課＋調課</option><option value="makeup">只補課</option><option value="transfer">只調課</option></select>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option><option value="attended">已出席</option><option value="absent">未到</option></select>
@@ -107,6 +112,11 @@
       <div id="mo-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
       <div id="mo-list"></div>`;
 
+    container.querySelector('[data-tab="late"]').addEventListener('click', () => {
+      container.innerHTML = '';
+      window.PanelMakeupLate.loadMakeupLatePanel(_sb, container);
+    });
+    container.querySelector('#mo-search').addEventListener('input', e => { _searchName = e.target.value.trim(); applyAndRender(container); });
     container.querySelector('#mo-class').addEventListener('change',  e => { _filterClass  = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-type').addEventListener('change',   e => { _filterType   = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-status').addEventListener('change', e => { _filterStatus = e.target.value; applyAndRender(container); });
@@ -181,7 +191,7 @@
 
     renderUrgentSummary(container);
 
-    const muFiltered = (_filterType === 'transfer') ? [] : _makeups.filter(r => {
+    let muFiltered = (_filterType === 'transfer') ? [] : _makeups.filter(r => {
       if (_filterClass && r._class_name !== _filterClass) return false;
       if (_filterStatus === 'pending') return r.status === '待補課' && !r._overdue;
       if (_filterStatus === 'done')    return r.status === '已完成';
@@ -189,7 +199,7 @@
       if (_filterStatus === 'attended' || _filterStatus === 'absent') return false;
       return true;
     });
-    const trFiltered = (_filterType === 'makeup') ? [] : _transfers.filter(r => {
+    let trFiltered = (_filterType === 'makeup') ? [] : _transfers.filter(r => {
       if (_filterClass && r._class_name !== _filterClass) return false;
       if (_filterStatus === 'attended') return r.status === '已出席';
       if (_filterStatus === 'absent')   return r.status === '未到';
@@ -197,6 +207,11 @@
       if (_filterStatus === 'done' || _filterStatus === 'overdue') return false;
       return true;
     });
+    if (_searchName) {
+      const q = _searchName.toLowerCase();
+      muFiltered = muFiltered.filter(r => (r._name || '').toLowerCase().includes(q));
+      trFiltered = trFiltered.filter(r => (r._name || '').toLowerCase().includes(q));
+    }
 
     if (countEl) countEl.textContent = `補課 ${muFiltered.length} 筆　調課 ${trFiltered.length} 筆`;
 
@@ -206,12 +221,34 @@
     }
     if (muFiltered.length) {
       listEl.insertAdjacentHTML('beforeend', '<div class="buke-section warn" style="margin-bottom:8px">📚 補課</div>');
-      muFiltered.forEach(r => listEl.appendChild(buildMakeupCard(r, container)));
+      renderGroupedByClass(listEl, muFiltered, buildMakeupCard, container);
     }
     if (trFiltered.length) {
       listEl.insertAdjacentHTML('beforeend', '<div class="buke-section" style="margin:16px 0 8px;color:var(--header)">🔄 調課</div>');
-      trFiltered.forEach(r => listEl.appendChild(buildTransferCard(r, container)));
+      renderGroupedByClass(listEl, trFiltered, buildTransferCard, container);
     }
+  }
+
+  /** 依班別分組摺疊（<details> 預設展開），組內維持既有卡片渲染方式不變 */
+  function renderGroupedByClass(listEl, rows, buildCardFn, container) {
+    const groups = new Map();
+    rows.forEach(r => {
+      const key = r._class_name || '—';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+    [...groups.keys()].sort().forEach(className => {
+      const list = groups.get(className);
+      const details = document.createElement('details');
+      details.open = true;
+      details.style.marginBottom = '10px';
+      const summary = document.createElement('summary');
+      summary.style.cssText = 'cursor:pointer;font-weight:500;padding:6px 0';
+      summary.textContent = `${className}（${list.length} 筆）`;
+      details.appendChild(summary);
+      list.forEach(r => details.appendChild(buildCardFn(r, container)));
+      listEl.appendChild(details);
+    });
   }
 
   // ── 共用：載入該生缺堂到 select ────────────────────────────────
@@ -592,5 +629,5 @@
     }
   }
 
-  window.PanelMakeupOverview = { loadMakeupOverviewPanel };
+  window.PanelMakeupOverview = { loadMakeupOverviewPanel, buildMakeupCard, _loadAbsencesInto };
 })();
