@@ -296,7 +296,7 @@ function todayStr() {
       btn.disabled = false; btn.textContent = '查詢';
     });
 
-    window.KioskNameSearch.attachLiveNameSearch(sb, staff.staff_id, {
+    window.KioskNameSearch.attachLiveNameSearch(sb, () => staff.staff_id, {
       inputEl, suggestEl, resultEl, msgEl, onFound: onFoundMakeup,
     });
   }
@@ -337,7 +337,7 @@ function todayStr() {
       btn.disabled = false; btn.textContent = '查詢';
     });
 
-    window.KioskNameSearch.attachLiveNameSearch(sb, staff.staff_id, {
+    window.KioskNameSearch.attachLiveNameSearch(sb, () => staff.staff_id, {
       inputEl, suggestEl, resultEl, msgEl, onFound: onFoundTransfer,
     });
   }
@@ -383,7 +383,7 @@ function todayStr() {
       btn.disabled = false; btn.textContent = '查詢';
     });
 
-    window.KioskNameSearch.attachLiveNameSearch(sb, staff.staff_id, {
+    window.KioskNameSearch.attachLiveNameSearch(sb, () => staff.staff_id, {
       inputEl, suggestEl, resultEl, msgEl, onFound: onFoundTraining,
     });
   }

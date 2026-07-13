@@ -96,7 +96,7 @@ function renderNameCandidates(container, candidates, onPick, introText) {
  * renderNameCandidates）。點下去＝直接完成查詢：清空輸入框跟建議清單、呼叫 onFound。
  * 查詢失敗（網路等）靜默略過，不影響義工改用「打完整姓名按查詢」或「打編號」這兩條備用路徑。
  */
-function attachLiveNameSearch(sb, staffId, { inputEl, suggestEl, resultEl, msgEl, onFound }) {
+function attachLiveNameSearch(sb, getStaffId, { inputEl, suggestEl, resultEl, msgEl, onFound }) {
   let timer = null;
   inputEl.addEventListener('input', () => {
     clearTimeout(timer);
@@ -106,6 +106,7 @@ function attachLiveNameSearch(sb, staffId, { inputEl, suggestEl, resultEl, msgEl
     if (digits || !query) { suggestEl.innerHTML = ''; return; }
     timer = setTimeout(async () => {
       try {
+        const staffId = getStaffId();
         const list = await kioskSearchMembersByName(sb, staffId, query);
         if (!list.length) { suggestEl.innerHTML = ''; return; }
         renderNameCandidates(suggestEl, list, (memberId) => {
