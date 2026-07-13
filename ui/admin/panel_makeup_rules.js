@@ -58,7 +58,7 @@
   function renderBlackout(list, listEl) {
     listEl.innerHTML = '';
     if (!list.length) {
-      listEl.innerHTML = '<p style="color:var(--muted);font-size:14px;margin:6px 0">尚未設定黑名單日期。</p>';
+      listEl.innerHTML = '<p style="color:var(--muted);font-size:14px;margin:6px 0">尚未設定不開放補課日期。</p>';
       return;
     }
     list.forEach((item, i) => {
@@ -166,6 +166,9 @@
           缺課日起 <strong style="color:var(--ink)">${deadlineDays} 天</strong>內須完成補課，逾期視同缺席。
           此欄位全系統統一，<strong>不可修改</strong>。
         </p>
+        <p style="font-size:14px;color:var(--muted);margin:8px 0 0">
+          ⓘ 超過期限想補課：學員/學長無法自行登記，請精舍到「補課／調課總覽」→「逾期補課登記」頁籤代為登記。
+        </p>
       </div>
 
       <!-- §5 超範圍提醒開關 -->
@@ -183,10 +186,10 @@
         <div id="blackout-list"></div>
 
         <details style="margin-top:10px">
-          <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增黑名單日期</summary>
+          <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增不開放補課日期</summary>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
             <input type="date" id="inp-blackout-date" class="buke-input" style="font-size:14px;min-height:36px">
-            <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：中元法會）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
+            <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：梁皇啟建）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
             <button id="btn-add-blackout" class="buke-btn" style="font-size:14px;padding:6px 14px;min-height:36px">加入</button>
             <span id="blackout-err" style="font-size:13px;color:var(--danger-tx)"></span>
           </div>
@@ -215,7 +218,7 @@
       const errEl  = container.querySelector('#blackout-err');
       if (!date) { errEl.textContent = '請選擇日期'; return; }
       const dup = blackoutDates.some(b => b.date === date);
-      if (dup) { errEl.textContent = '此日期已在黑名單中，請勿重複新增'; return; }
+      if (dup) { errEl.textContent = '此日期已列入不開放補課，請勿重複新增'; return; }
       errEl.textContent = '';
       blackoutDates.push({ date, reason: reason || null });
       renderBlackout(blackoutDates, blackoutListEl);
