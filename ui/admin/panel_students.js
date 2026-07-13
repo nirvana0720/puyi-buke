@@ -8,6 +8,7 @@
   let _allRows  = [];
   let _filterClass = null;
   let _filterGroup = '';
+  let _searchName  = '';
   let _sortKey     = 'short';   // 'short' | 'pending'
   let _scheduleMap = new Map(); // class_ref → {day_of_week, day_night}（供班別下拉依星期排序）
 
@@ -46,6 +47,7 @@
 
     container.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <input id="st-search-name" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px" value="${_searchName}">
         <select id="st-sel-class" class="buke-select" style="font-size:14px;min-height:36px">
           <option value="">全部班別</option>${classOpts}
         </select>
@@ -68,6 +70,10 @@
     // 若從總覽帶入班別，更新組別下拉
     if (_filterClass) refreshGroupOpts(container);
 
+    container.querySelector('#st-search-name').addEventListener('input', e => {
+      _searchName = e.target.value.trim().toLowerCase();
+      applyAndRender(container);
+    });
     container.querySelector('#st-sel-class').addEventListener('change', e => {
       _filterClass = e.target.value ? Number(e.target.value) : null;
       _filterGroup = '';
@@ -100,7 +106,8 @@
   function filtered() {
     return _allRows.filter(r =>
       (!_filterClass || r.class_ref === _filterClass) &&
-      (!_filterGroup || r.group_id  === _filterGroup)
+      (!_filterGroup || r.group_id  === _filterGroup) &&
+      (!_searchName  || r.name.toLowerCase().includes(_searchName))
     );
   }
 
