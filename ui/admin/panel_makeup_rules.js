@@ -64,9 +64,10 @@
     list.forEach((item, i) => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
+      const timeTxt = (item.start && item.end) ? ` ${item.start}–${item.end}` : '';
       row.innerHTML = `
         <span class="buke-badge" style="background:var(--warn-bg);color:var(--warn-tx);font-size:14px">
-          ${item.date}　${item.reason || ''}
+          ${item.date}${timeTxt}　${item.reason || ''}
         </span>
         <button class="buke-btn buke-btn-danger" style="font-size:13px;padding:4px 10px;min-height:32px">
           刪除
@@ -167,7 +168,7 @@
           此欄位全系統統一，<strong>不可修改</strong>。
         </p>
         <p style="font-size:14px;color:var(--muted);margin:8px 0 0">
-          ⓘ 超過期限想補課：學員/學長無法自行登記，請精舍到「補課／調課總覽」→「逾期補課登記」頁籤代為登記。
+          ⓘ 超過期限想補課：學員/學長無法自行登記，請精舍到「逾期補課登記」頁籤代為登記。
         </p>
       </div>
 
@@ -187,11 +188,24 @@
 
         <details style="margin-top:10px">
           <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增不開放補課日期</summary>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
-            <input type="date" id="inp-blackout-date" class="buke-input" style="font-size:14px;min-height:36px">
-            <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：梁皇啟建）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
-            <button id="btn-add-blackout" class="buke-btn" style="font-size:14px;padding:6px 14px;min-height:36px">加入</button>
-            <span id="blackout-err" style="font-size:13px;color:var(--danger-tx)"></span>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <input type="date" id="inp-blackout-date" class="buke-input" style="font-size:14px;min-height:36px">
+              <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：梁皇啟建）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+              <input type="checkbox" id="chk-blackout-allday" checked style="width:18px;height:18px">
+              整天不開放
+            </label>
+            <div id="blackout-time-row" style="display:none;align-items:center;gap:10px;flex-wrap:wrap">
+              <input type="time" id="inp-blackout-start" class="buke-input" style="font-size:14px;min-height:36px;width:110px">
+              <span style="color:var(--muted)">–</span>
+              <input type="time" id="inp-blackout-end" class="buke-input" style="font-size:14px;min-height:36px;width:110px">
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <button id="btn-add-blackout" class="buke-btn" style="font-size:14px;padding:6px 14px;min-height:36px">加入</button>
+              <span id="blackout-err" style="font-size:13px;color:var(--danger-tx)"></span>
+            </div>
           </div>
         </details>
       </div>
@@ -212,18 +226,38 @@
     const blackoutListEl = container.querySelector('#blackout-list');
     renderBlackout(blackoutDates, blackoutListEl);
 
+    container.querySelector('#chk-blackout-allday').addEventListener('change', e => {
+      container.querySelector('#blackout-time-row').style.display = e.target.checked ? 'none' : 'flex';
+    });
+
     container.querySelector('#btn-add-blackout').addEventListener('click', () => {
-      const date   = container.querySelector('#inp-blackout-date').value;
-      const reason = container.querySelector('#inp-blackout-reason').value.trim();
-      const errEl  = container.querySelector('#blackout-err');
+      const date    = container.querySelector('#inp-blackout-date').value;
+      const reason  = container.querySelector('#inp-blackout-reason').value.trim();
+      const allDay  = container.querySelector('#chk-blackout-allday').checked;
+      const errEl   = container.querySelector('#blackout-err');
       if (!date) { errEl.textContent = '請選擇日期'; return; }
       const dup = blackoutDates.some(b => b.date === date);
       if (dup) { errEl.textContent = '此日期已列入不開放補課，請勿重複新增'; return; }
-      errEl.textContent = '';
-      blackoutDates.push({ date, reason: reason || null });
+
+      if (allDay) {
+        errEl.textContent = '';
+        blackoutDates.push({ date, reason: reason || null });
+      } else {
+        const start = container.querySelector('#inp-blackout-start').value;
+        const end   = container.querySelector('#inp-blackout-end').value;
+        if (!start || !end) { errEl.textContent = '請填入起訖時間'; return; }
+        if (start >= end)   { errEl.textContent = '開始時間須早於結束時間'; return; }
+        errEl.textContent = '';
+        blackoutDates.push({ date, reason: reason || null, start, end });
+      }
+
       renderBlackout(blackoutDates, blackoutListEl);
       container.querySelector('#inp-blackout-date').value = '';
       container.querySelector('#inp-blackout-reason').value = '';
+      container.querySelector('#inp-blackout-start').value = '';
+      container.querySelector('#inp-blackout-end').value = '';
+      container.querySelector('#chk-blackout-allday').checked = true;
+      container.querySelector('#blackout-time-row').style.display = 'none';
     });
 
     // ── mode 單選 ↔ N 天輸入啟用 ────────────────────────

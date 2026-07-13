@@ -192,3 +192,10 @@ body {
   color:var(--header-tx); background:var(--header); font-weight:500;
   border-color:transparent;
 }
+
+/* ── 3 欄變體（單排 3 個頁籤時用，例：補課登記／日夜補登記／逾期補課登記）──
+   基礎規則的 nth-child(2n) / nth-last-child(-n+2) 是為 2 欄格線設計的，3 欄單排會切錯分隔線，
+   這裡用較高特異性覆寫成「每欄都有右邊線、最後一欄除外，單排所以底線一律拿掉」 ── */
+.buke-tabs.tabs-3 { grid-template-columns:repeat(3, 1fr); }
+.buke-tabs.tabs-3 .buke-tab { border-bottom:none; border-right:1px dashed rgba(0,0,0,0.2); }
+.buke-tabs.tabs-3 .buke-tab:last-child { border-right:none; }

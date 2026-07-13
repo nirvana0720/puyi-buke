@@ -1,32 +1,24 @@
-// 職責：補課／調課總覽——管理員跨班督看、標完成、編輯、刪除、補登
+// 職責：補課登記——管理員跨班督看、標完成、編輯、刪除、補登（只處理 makeups）
+// 「日夜補登記」（原調課）重構41 拆分搬到 panel_transfer_overview.js
 // inline confirm；不用瀏覽器 confirm；authenticated .from() / .rpc()
 
 'use strict';
 
 (function () {
-  let _sb, _makeups = [], _transfers = [], _filterClass = '', _filterType = 'all', _filterStatus = 'all', _searchName = '';
+  let _sb, _makeups = [], _filterClass = '', _filterStatus = 'all', _searchName = '';
   const TODAY = new Date().toLocaleDateString('sv-SE');
 
   // ── 資料讀取 ────────────────────────────────────────────────
 
-  async function fetchAll() {
-    const [mu, tr] = await Promise.all([
-      _sb.from('makeups').select(
-        'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,' +
-        'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
-        'sessions!session_ref(date)'
-      ).order('created_at', { ascending: false }),
-      _sb.from('transfers').select(
-        'id,to_date,status,attended_at,late_mark,registered_by,' +
-        'members!member_ref(name,group_id,classes(class_name)),' +
-        'sessions!from_session_ref(date),' +
-        'classes!to_class_ref(class_name)'
-      ).order('created_at', { ascending: false }),
-    ]);
-    if (mu.error) throw new Error(`補課：${mu.error.message}`);
-    if (tr.error) throw new Error(`調課：${tr.error.message}`);
+  async function fetchMakeups() {
+    const { data, error } = await _sb.from('makeups').select(
+      'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,' +
+      'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
+      'sessions!session_ref(date)'
+    ).order('created_at', { ascending: false });
+    if (error) throw new Error(`補課：${error.message}`);
 
-    const muIds = (mu.data || []).map(r => r.id);
+    const muIds = (data || []).map(r => r.id);
     let attMap    = new Map(); // makeup_ref → 最新一筆（DESC 第一筆）
     let allAttMap = new Map(); // makeup_ref → 所有紀錄[]，由舊到新
     if (muIds.length) {
@@ -43,7 +35,7 @@
       });
     }
 
-    _makeups   = (mu.data || []).map(r => ({
+    _makeups = (data || []).map(r => ({
       ...r,
       _name:          r.members?.name                || '—',
       _group:         r.members?.group_id            || '',
@@ -56,15 +48,6 @@
       _attend_count:  (allAttMap.get(r.id) || []).length,
       _att_records:   allAttMap.get(r.id) || [],
     }));
-    _transfers = (tr.data || []).map(r => ({
-      ...r,
-      _name:       r.members?.name                || '—',
-      _group:      r.members?.group_id            || '',
-      _class_name: r.members?.classes?.class_name || '—',
-      _class_ref:  r.members?.class_ref           || '',
-      _from_date:  r.sessions?.date               || '',
-      _to_class:   r.classes?.class_name          || '—',
-    }));
   }
 
   // ── RPC / 資料操作 ──────────────────────────────────────────
@@ -73,8 +56,6 @@
   const uncompleteMakeup = id => _sb.rpc('uncomplete_makeup', { p_makeup_id: id });
   const deleteMakeup     = id => _sb.from('makeups').delete().eq('id', id);
   const updateMakeup     = (id, f) => _sb.from('makeups').update(f).eq('id', id);
-  const deleteTransfer   = id => _sb.from('transfers').delete().eq('id', id);
-  const updateTransfer   = (id, f) => _sb.from('transfers').update(f).eq('id', id);
 
   // ── 面板入口 ────────────────────────────────────────────────
 
@@ -82,7 +63,7 @@
     _sb = sb;
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
-      await fetchAll();
+      await fetchMakeups();
       renderShell(container);
       applyAndRender(container);
     } catch (e) {
@@ -91,45 +72,46 @@
   }
 
   function renderShell(container) {
-    const classNames = [...new Set([..._makeups, ..._transfers].map(r => r._class_name).filter(Boolean))].sort();
+    const classNames = [...new Set(_makeups.map(r => r._class_name).filter(Boolean))].sort();
     const classOpts  = classNames.map(n => `<option>${n}</option>`).join('');
     container.innerHTML = `
-      <div class="buke-tabs">
-        <div class="buke-tab active" data-tab="overview">補課／調課總覽</div>
+      <div class="buke-tabs tabs-3">
+        <div class="buke-tab active" data-tab="makeup">補課登記</div>
+        <div class="buke-tab" data-tab="transfer">日夜補登記</div>
         <div class="buke-tab" data-tab="late">逾期補課登記</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
-        <select id="mo-type" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">補課＋調課</option><option value="makeup">只補課</option><option value="transfer">只調課</option></select>
-        <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option><option value="attended">已出席</option><option value="absent">未到</option></select>
+        <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="mo-add-makeup" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登補課</button>
-        <button id="mo-add-transfer" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登調課</button>
       </div>
       <div id="mo-add-form" style="margin-bottom:12px"></div>
       <div id="mo-urgent" style="margin-bottom:14px"></div>
       <div id="mo-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
       <div id="mo-list"></div>`;
 
+    container.querySelector('[data-tab="transfer"]').addEventListener('click', () => {
+      container.innerHTML = '';
+      window.PanelTransferOverview.loadTransferOverviewPanel(_sb, container);
+    });
     container.querySelector('[data-tab="late"]').addEventListener('click', () => {
       container.innerHTML = '';
       window.PanelMakeupLate.loadMakeupLatePanel(_sb, container);
     });
     container.querySelector('#mo-search').addEventListener('input', e => { _searchName = e.target.value.trim(); applyAndRender(container); });
     container.querySelector('#mo-class').addEventListener('change',  e => { _filterClass  = e.target.value; applyAndRender(container); });
-    container.querySelector('#mo-type').addEventListener('change',   e => { _filterType   = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-status').addEventListener('change', e => { _filterStatus = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-refresh').addEventListener('click', async () => {
       container.querySelector('#mo-list').innerHTML = '<p class="buke-empty">載入中…</p>';
-      await fetchAll(); applyAndRender(container);
+      await fetchMakeups(); applyAndRender(container);
     });
-    container.querySelector('#mo-add-makeup').addEventListener('click',   () => showAddForm(container, 'makeup'));
-    container.querySelector('#mo-add-transfer').addEventListener('click', () => showAddForm(container, 'transfer'));
+    container.querySelector('#mo-add-makeup').addEventListener('click', () => showAddMakeupForm(container));
   }
 
   /** ⏰ 即將逾期／已逾期補課摘要（跨班，比照學長/班長看板 urgentMakeups 邏輯：
-   *  已逾期 或 剩餘天數 ≤14 天的「待補課」登記，尊重目前的班別篩選但不受狀態/類型篩選影響） */
+   *  已逾期 或 剩餘天數 ≤14 天的「待補課」登記，尊重目前的班別篩選但不受狀態篩選影響） */
   function renderUrgentSummary(container) {
     const el = container.querySelector('#mo-urgent');
     if (!el) return;
@@ -191,45 +173,29 @@
 
     renderUrgentSummary(container);
 
-    let muFiltered = (_filterType === 'transfer') ? [] : _makeups.filter(r => {
+    let muFiltered = _makeups.filter(r => {
       if (_filterClass && r._class_name !== _filterClass) return false;
       if (_filterStatus === 'pending') return r.status === '待補課' && !r._overdue;
       if (_filterStatus === 'done')    return r.status === '已完成';
       if (_filterStatus === 'overdue') return r._overdue;
-      if (_filterStatus === 'attended' || _filterStatus === 'absent') return false;
-      return true;
-    });
-    let trFiltered = (_filterType === 'makeup') ? [] : _transfers.filter(r => {
-      if (_filterClass && r._class_name !== _filterClass) return false;
-      if (_filterStatus === 'attended') return r.status === '已出席';
-      if (_filterStatus === 'absent')   return r.status === '未到';
-      if (_filterStatus === 'pending')  return r.status === '已登記';
-      if (_filterStatus === 'done' || _filterStatus === 'overdue') return false;
       return true;
     });
     if (_searchName) {
       const q = _searchName.toLowerCase();
       muFiltered = muFiltered.filter(r => (r._name || '').toLowerCase().includes(q));
-      trFiltered = trFiltered.filter(r => (r._name || '').toLowerCase().includes(q));
     }
 
-    if (countEl) countEl.textContent = `補課 ${muFiltered.length} 筆　調課 ${trFiltered.length} 筆`;
+    if (countEl) countEl.textContent = `補課 ${muFiltered.length} 筆`;
 
     listEl.innerHTML = '';
-    if (!muFiltered.length && !trFiltered.length) {
+    if (!muFiltered.length) {
       listEl.innerHTML = '<p class="buke-empty">沒有符合的紀錄。</p>'; return;
     }
-    if (muFiltered.length) {
-      listEl.insertAdjacentHTML('beforeend', '<div class="buke-section warn" style="margin-bottom:8px">📚 補課</div>');
-      renderGroupedByClass(listEl, muFiltered, buildMakeupCard, container);
-    }
-    if (trFiltered.length) {
-      listEl.insertAdjacentHTML('beforeend', '<div class="buke-section" style="margin:16px 0 8px;color:var(--header)">🔄 調課</div>');
-      renderGroupedByClass(listEl, trFiltered, buildTransferCard, container);
-    }
+    renderGroupedByClass(listEl, muFiltered, buildMakeupCard, container);
   }
 
-  /** 依班別分組摺疊（<details> 預設展開），組內維持既有卡片渲染方式不變 */
+  /** 依班別分組摺疊（<details> 預設展開），組內維持既有卡片渲染方式不變。
+   *  匯出供 panel_transfer_overview.js 共用，不要複製貼上一份一樣的邏輯 */
   function renderGroupedByClass(listEl, rows, buildCardFn, container) {
     const groups = new Map();
     rows.forEach(r => {
@@ -261,7 +227,7 @@
     sesSel.style.display = 'block';
   }
 
-  // ── inline confirm helper ────────────────────────────────────
+  // ── inline confirm helper（匯出供 panel_transfer_overview.js 共用） ──────
 
   function inlineConfirm(card, msg, onOk) {
     let area = card.querySelector('.ic-area');
@@ -276,8 +242,8 @@
       <button class="buke-btn buke-btn-ghost ic-cancel" style="font-size:13px;padding:4px 12px;min-height:30px">取消</button></div>
       <div class="ic-result" style="font-size:13px;margin-top:6px"></div>`;
     area.querySelector('.ic-ok').onclick = async () => {
-      try { await onOk(); await fetchAll(); applyAndRender(card.closest('#mo-list')?.parentElement?.parentElement || document.body); }
-      catch (e) { area.querySelector('.ic-result').textContent = `❌ ${e.message}`; }
+      try { await onOk(); } catch (e) { area.querySelector('.ic-result').textContent = `❌ ${e.message}`; return; }
+      area.innerHTML = '';
     };
     area.querySelector('.ic-cancel').onclick = () => { area.innerHTML = ''; };
   }
@@ -322,11 +288,11 @@
       <div class="edit-area"></div>`;
 
     card.querySelector('.btn-complete')?.addEventListener('click', () =>
-      inlineConfirm(card, `確定將 ${r._name} 的補課（${r._date}）標為完成？`, () => completeMakeup(r.id)));
+      inlineConfirm(card, `確定將 ${r._name} 的補課（${r._date}）標為完成？`, async () => { await completeMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-uncomplete')?.addEventListener('click', () =>
-      inlineConfirm(card, `確定取消 ${r._name} 的補課完成？attendance 將還原（ML→LL / M→O）`, () => uncompleteMakeup(r.id)));
+      inlineConfirm(card, `確定取消 ${r._name} 的補課完成？attendance 將還原（ML→LL / M→O）`, async () => { await uncompleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-del-mu').addEventListener('click', () =>
-      inlineConfirm(card, `確定刪除 ${r._name} 這筆補課登記？`, () => deleteMakeup(r.id)));
+      inlineConfirm(card, `確定刪除 ${r._name} 這筆補課登記？`, async () => { await deleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-edit-mu').addEventListener('click', () => toggleEditMakeup(card, r));
     return card;
   }
@@ -392,242 +358,77 @@
       });
       if (error?.code === '23505') { msgEl.textContent = '⚠ 此缺堂已有補課登記，不能重複'; return; }
       if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
-      await fetchAll(); applyAndRender(card.closest('#panel-body') || document.body);
+      await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body);
     });
   }
 
-  // ── 調課卡片 ────────────────────────────────────────────────
+  // ── 補登表單（補課） ──────────────────────────────────────────
 
-  function buildTransferCard(r, container) {
-    const card = document.createElement('div');
-    const badge = r.status==='已出席' ? '<span class="buke-badge pass">已出席</span>'
-      : r.status==='未到' ? '<span class="buke-badge danger">未到</span>'
-      : '<span class="buke-badge warn">已登記</span>';
-    card.className = 'buke-card';
-    card.style.marginBottom = '10px';
-    card.innerHTML = `
-      <div class="row" style="flex-wrap:wrap;gap:6px">
-        <div><span class="name">${r._name}</span>
-          <span class="meta">${r._class_name}　${r._group}</span></div>
-        ${badge}
-      </div>
-      <div style="font-size:14px;color:var(--muted);margin:6px 0">
-        原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
-        ${r.late_mark ? `　遲到：${r.late_mark}` : ''}　登記人：${r.registered_by}
-      </div>
-      <div class="action-row" style="display:flex;gap:6px;flex-wrap:wrap">
-        ${r.status!=='已出席' ? '<button class="buke-btn btn-tr-attend" style="font-size:13px;padding:4px 12px;min-height:30px">標已出席</button>' : ''}
-        ${r.status!=='未到'   ? '<button class="buke-btn buke-btn-ghost btn-tr-absent" style="font-size:13px;padding:4px 12px;min-height:30px">標未到</button>' : ''}
-        <button class="buke-btn buke-btn-danger btn-del-tr" style="font-size:13px;padding:4px 12px;min-height:30px">刪除</button>
-      </div>
-      <div class="edit-area"></div>`;
-
-    card.querySelector('.btn-tr-attend')?.addEventListener('click', () => {
-      const editArea = card.querySelector('.edit-area');
-      editArea.innerHTML = `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:14px">遲到判定：</span>
-          <select class="buke-select f-late" style="font-size:14px;min-height:32px"><option value="準時">準時</option><option>L</option><option>LL</option><option>A</option></select>
-          <button class="buke-btn btn-ok-attend" style="font-size:13px;padding:4px 12px;min-height:30px">確定出席</button>
-          <button class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 12px;min-height:30px" onclick="this.parentElement.innerHTML=''">取消</button>
-          <div class="ic-result" style="font-size:13px"></div></div>`;
-      editArea.querySelector('.btn-ok-attend').addEventListener('click', async () => {
-        const lm = editArea.querySelector('.f-late').value;
-        try {
-          const { error } = await updateTransfer(r.id, { status:'已出席', attended_at: new Date().toISOString(), late_mark: lm });
-          if (error) throw new Error(error.message);
-          await fetchAll(); applyAndRender(card.closest('#panel-body') || document.body);
-        } catch (e) { editArea.querySelector('.ic-result').textContent = `❌ ${e.message}`; }
-      });
-    });
-    card.querySelector('.btn-tr-absent')?.addEventListener('click', () =>
-      inlineConfirm(card, `確定將 ${r._name} 的調課（${r._from_date}）標為未到？`, () => updateTransfer(r.id, { status:'未到' })));
-    card.querySelector('.btn-del-tr').addEventListener('click', () =>
-      inlineConfirm(card, `確定刪除 ${r._name} 這筆調課紀錄？`, () => deleteTransfer(r.id)));
-    return card;
-  }
-
-  // ── 補登表單（補課 / 調課） ──────────────────────────────────
-
-  function showAddForm(container, type) {
+  function showAddMakeupForm(container) {
     const formEl = container.querySelector('#mo-add-form');
-    if (formEl.dataset.type === type && formEl.innerHTML) { formEl.innerHTML = ''; formEl.dataset.type=''; return; }
-    formEl.dataset.type = type;
-    if (type === 'makeup') {
-      formEl.innerHTML = `
-        <div class="buke-card" style="margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:10px">補登補課</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:6px">
-              <input class="buke-input f-mname" placeholder="學員姓名（需完整）" style="font-size:14px;flex:1">
-              <button class="buke-btn btn-lookup-member" style="font-size:13px;padding:4px 12px">查詢</button>
-            </div>
-            <select class="buke-select f-mclass" style="font-size:14px;display:none"><option value="">請選擇班別</option></select>
-            <select class="buke-select f-msession" style="font-size:14px;display:none"><option value="">請選擇缺課堂次</option></select>
-            <div class="f-more" style="display:none;flex-direction:column;gap:8px">
-              <div style="font-size:14px">補登日期 <span style="color:var(--danger-tx)">*</span>
-                <input type="date" class="buke-input f-mcdate" style="font-size:14px;margin-top:4px;width:100%">
-              </div>
-              <div style="display:flex;gap:8px">
-                <button class="buke-btn btn-submit-add" style="font-size:13px;padding:4px 14px;min-height:30px">補登</button>
-                <button class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 14px;min-height:30px"
-                  onclick="this.closest('#mo-add-form').innerHTML=''">取消</button>
-              </div>
-              <div class="add-msg" style="font-size:13px"></div>
-            </div>
+    if (formEl.innerHTML) { formEl.innerHTML = ''; return; }
+    formEl.innerHTML = `
+      <div class="buke-card" style="margin-bottom:12px">
+        <div style="font-weight:500;margin-bottom:10px">補登補課</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:6px">
+            <input class="buke-input f-mname" placeholder="學員姓名（需完整）" style="font-size:14px;flex:1">
+            <button class="buke-btn btn-lookup-member" style="font-size:13px;padding:4px 12px">查詢</button>
           </div>
-        </div>`;
-
-      let _adMembers = [];
-      formEl.querySelector('.btn-lookup-member').addEventListener('click', async () => {
-        const name = formEl.querySelector('.f-mname').value.trim();
-        if (!name) return;
-        const { data } = await _sb.from('members').select('id,class_ref,classes(class_name)').ilike('name', name).eq('status','在學');
-        _adMembers = data || [];
-        const clsSel = formEl.querySelector('.f-mclass');
-        clsSel.innerHTML = '<option value="">請選擇班別</option>' + _adMembers.map((m,i)=>`<option value="${i}">${m.classes?.class_name||'—'}</option>`).join('');
-        clsSel.style.display = 'block';
-        formEl.querySelector('.f-msession').style.display = 'none';
-        formEl.querySelector('.f-more').style.display = 'none';
-      });
-      formEl.querySelector('.f-mclass').addEventListener('change', async () => {
-        const mem = _adMembers[Number(formEl.querySelector('.f-mclass').value)];
-        if (!mem) return;
-        await _loadAbsencesInto(mem.id, formEl.querySelector('.f-msession'), 0);
-        formEl.querySelector('.f-more').style.display = 'flex';
-      });
-      formEl.querySelector('.btn-submit-add').addEventListener('click', async () => {
-        const mem = _adMembers[Number(formEl.querySelector('.f-mclass').value)];
-        const sessRef = formEl.querySelector('.f-msession').value;
-        const msgEl = formEl.querySelector('.add-msg');
-        if (!mem || !sessRef) { msgEl.textContent = '請選擇班別與缺課堂次'; return; }
-        const cdate = formEl.querySelector('.f-mcdate').value;
-        if (!cdate) { msgEl.textContent = '請填入補登日期'; return; }
-        // 補登＝已發生過的事，直接建立＋標完成（不經過「待補課」中間狀態）
-        const { error } = await _sb.rpc('admin_backfill_makeup', {
-          p_member_db_id: mem.id, p_session_ref: Number(sessRef), p_method: '影音',
-        });
-        if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
-        const { data: muRow, error: muErr } = await _sb.from('makeups')
-          .select('id').eq('member_ref', mem.id).eq('session_ref', Number(sessRef)).single();
-        if (muErr || !muRow) { msgEl.textContent = `❌ 找不到剛建立的補課紀錄：${muErr?.message || ''}`; return; }
-        const { error: cErr } = await _sb.rpc('complete_makeup', { p_makeup_id: muRow.id, p_completed_date: cdate });
-        if (cErr) { msgEl.textContent = `❌ 補登成功但標完成失敗：${cErr.message}`; return; }
-        formEl.innerHTML = ''; await fetchAll(); applyAndRender(container);
-      });
-    } else {
-      formEl.innerHTML = `
-        <div class="buke-card" style="margin-bottom:12px">
-          <div style="font-weight:500;margin-bottom:10px">補登調課（跨班）</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:6px">
-              <input class="buke-input f-tname2" placeholder="學員姓名（需完整）" style="font-size:14px;flex:1">
-              <button class="buke-btn btn-lookup-tr" style="font-size:13px;padding:4px 12px">查詢</button>
+          <select class="buke-select f-mclass" style="font-size:14px;display:none"><option value="">請選擇班別</option></select>
+          <select class="buke-select f-msession" style="font-size:14px;display:none"><option value="">請選擇缺課堂次</option></select>
+          <div class="f-more" style="display:none;flex-direction:column;gap:8px">
+            <div style="font-size:14px">補登日期 <span style="color:var(--danger-tx)">*</span>
+              <input type="date" class="buke-input f-mcdate" style="font-size:14px;margin-top:4px;width:100%">
             </div>
-            <select class="buke-select f-tsrccls" style="font-size:14px;display:none"><option value="">請選擇該生班別（同名有多筆在學紀錄）</option></select>
-            <div class="f-tmore" style="display:none;flex-direction:column;gap:8px">
-              <input class="buke-input f-tfsess" type="date" style="font-size:14px">
-              <div style="font-size:13px;color:var(--muted);margin-top:-4px">↑ 原本的上課日期（該生目前班別）</div>
-              <select class="buke-select f-tclass" style="font-size:14px"><option value="">請選擇調去的班別</option></select>
-              <input class="buke-input f-tdate" type="date" style="font-size:14px">
-              <div style="font-size:13px;color:var(--muted);margin-top:-4px">↑ 調去日期</div>
-              <select class="buke-select f-tattend" style="font-size:14px">
-                <option value="">尚未確認（僅登記，之後再標出席）</option>
-                <option value="準時">已出席．準時</option>
-                <option value="L">已出席．遲到（20分內）</option>
-                <option value="LL">已出席．靜坐遲到（20~60分）</option>
-                <option value="A">已出席．晚到（≥60分）</option>
-              </select>
-              <div style="font-size:13px;color:var(--muted);margin-top:-4px">↑ 出席狀況（補登沒有實際到場時間，遲到狀況用選的）</div>
-              <div style="display:flex;gap:8px">
-                <button class="buke-btn btn-submit-tr" style="font-size:13px;padding:4px 14px;min-height:30px">補登</button>
-                <button class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 14px;min-height:30px"
-                  onclick="this.closest('#mo-add-form').innerHTML=''">取消</button>
-              </div>
+            <div style="display:flex;gap:8px">
+              <button class="buke-btn btn-submit-add" style="font-size:13px;padding:4px 14px;min-height:30px">補登</button>
+              <button class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 14px;min-height:30px"
+                onclick="this.closest('#mo-add-form').innerHTML=''">取消</button>
             </div>
             <div class="add-msg" style="font-size:13px"></div>
           </div>
-        </div>`;
+        </div>
+      </div>`;
 
-      let _trMembers = [];
-      let _trMember  = null;
-
-      async function _loadTransferTargets(member) {
-        const msgEl  = formEl.querySelector('.add-msg');
-        const moreEl = formEl.querySelector('.f-tmore');
-        const level  = member.classes?.level;
-        const { data: targets, error: tErr } = await _sb.from('classes')
-          .select('id,class_name')
-          .eq('level', level).eq('status', '進行中').neq('id', member.class_ref)
-          .order('class_name');
-        if (tErr) { msgEl.textContent = `❌ ${tErr.message}`; return; }
-        const clsSel = formEl.querySelector('.f-tclass');
-        clsSel.innerHTML = '<option value="">請選擇調去的班別</option>' +
-          (targets || []).map(c => `<option value="${c.id}">${c.class_name}</option>`).join('');
-        msgEl.textContent = targets?.length ? '' : `⚠ 目前沒有同級別（${level}）其他進行中的班可調`;
-        moreEl.style.display = 'flex';
-      }
-
-      formEl.querySelector('.btn-lookup-tr').addEventListener('click', async () => {
-        const name   = formEl.querySelector('.f-tname2').value.trim();
-        const msgEl  = formEl.querySelector('.add-msg');
-        const moreEl = formEl.querySelector('.f-tmore');
-        const srcSel = formEl.querySelector('.f-tsrccls');
-        msgEl.textContent = '';
-        moreEl.style.display = 'none';
-        srcSel.style.display = 'none';
-        _trMember = null;
-        if (!name) return;
-        const { data: mems } = await _sb.from('members')
-          .select('id,class_ref,classes(class_name,level)')
-          .ilike('name', name).eq('status', '在學');
-        _trMembers = mems || [];
-        if (!_trMembers.length) { msgEl.textContent = '找不到此在學學員'; return; }
-        if (_trMembers.length === 1) {
-          _trMember = _trMembers[0];
-          await _loadTransferTargets(_trMember);
-          return;
-        }
-        // 同名有多筆在學紀錄（例如同時在兩個班別在學），先讓精舍選對是哪一班的那位，
-        // 避免抓錯人導致「調去的班別」選項對不上（level 不對）
-        srcSel.innerHTML = '<option value="">請選擇該生班別（同名有多筆在學紀錄）</option>' +
-          _trMembers.map((m, i) => `<option value="${i}">${m.classes?.class_name || '—'}</option>`).join('');
-        srcSel.style.display = 'block';
-        msgEl.textContent = `⚠ 查到 ${_trMembers.length} 筆同名在學紀錄，請先選擇該生目前班別`;
+    let _adMembers = [];
+    formEl.querySelector('.btn-lookup-member').addEventListener('click', async () => {
+      const name = formEl.querySelector('.f-mname').value.trim();
+      if (!name) return;
+      const { data } = await _sb.from('members').select('id,class_ref,classes(class_name)').ilike('name', name).eq('status','在學');
+      _adMembers = data || [];
+      const clsSel = formEl.querySelector('.f-mclass');
+      clsSel.innerHTML = '<option value="">請選擇班別</option>' + _adMembers.map((m,i)=>`<option value="${i}">${m.classes?.class_name||'—'}</option>`).join('');
+      clsSel.style.display = 'block';
+      formEl.querySelector('.f-msession').style.display = 'none';
+      formEl.querySelector('.f-more').style.display = 'none';
+    });
+    formEl.querySelector('.f-mclass').addEventListener('change', async () => {
+      const mem = _adMembers[Number(formEl.querySelector('.f-mclass').value)];
+      if (!mem) return;
+      await _loadAbsencesInto(mem.id, formEl.querySelector('.f-msession'), 0);
+      formEl.querySelector('.f-more').style.display = 'flex';
+    });
+    formEl.querySelector('.btn-submit-add').addEventListener('click', async () => {
+      const mem = _adMembers[Number(formEl.querySelector('.f-mclass').value)];
+      const sessRef = formEl.querySelector('.f-msession').value;
+      const msgEl = formEl.querySelector('.add-msg');
+      if (!mem || !sessRef) { msgEl.textContent = '請選擇班別與缺課堂次'; return; }
+      const cdate = formEl.querySelector('.f-mcdate').value;
+      if (!cdate) { msgEl.textContent = '請填入補登日期'; return; }
+      // 補登＝已發生過的事，直接建立＋標完成（不經過「待補課」中間狀態）
+      const { error } = await _sb.rpc('admin_backfill_makeup', {
+        p_member_db_id: mem.id, p_session_ref: Number(sessRef), p_method: '影音',
       });
-
-      formEl.querySelector('.f-tsrccls').addEventListener('change', async () => {
-        const idx = formEl.querySelector('.f-tsrccls').value;
-        if (idx === '') return;
-        _trMember = _trMembers[Number(idx)];
-        formEl.querySelector('.add-msg').textContent = '';
-        await _loadTransferTargets(_trMember);
-      });
-
-      formEl.querySelector('.btn-submit-tr').addEventListener('click', async () => {
-        const fromDay = formEl.querySelector('.f-tfsess').value;
-        const toClass = Number(formEl.querySelector('.f-tclass').value);
-        const toDate  = formEl.querySelector('.f-tdate').value;
-        const msgEl   = formEl.querySelector('.add-msg');
-        if (!_trMember) { msgEl.textContent = '請先查詢學員'; return; }
-        if (!fromDay || !toClass || !toDate) { msgEl.textContent = '請填入原上課日期、調去的班別、調去日期'; return; }
-        const { data: ses } = await _sb.from('sessions').select('id').eq('date', fromDay).eq('class_ref', _trMember.class_ref).limit(1);
-        if (!ses?.length) { msgEl.textContent = '找不到對應的原班堂次'; return; }
-        const attendMark = formEl.querySelector('.f-tattend').value; // '' = 尚未確認；否則 準時/L/LL/A
-        const insertRow = {
-          member_ref: _trMember.id, from_session_ref: ses[0].id,
-          to_class_ref: toClass, to_date: toDate,
-          registered_by: '精舍',
-          ...(attendMark
-            ? { status: '已出席', attended_at: new Date().toISOString(), late_mark: attendMark }
-            : { status: '已登記' }),
-        };
-        const { error } = await _sb.from('transfers').insert(insertRow);
-        if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
-        formEl.innerHTML = '';
-        await fetchAll(); applyAndRender(container);
-      });
-    }
+      if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
+      const { data: muRow, error: muErr } = await _sb.from('makeups')
+        .select('id').eq('member_ref', mem.id).eq('session_ref', Number(sessRef)).single();
+      if (muErr || !muRow) { msgEl.textContent = `❌ 找不到剛建立的補課紀錄：${muErr?.message || ''}`; return; }
+      const { error: cErr } = await _sb.rpc('complete_makeup', { p_makeup_id: muRow.id, p_completed_date: cdate });
+      if (cErr) { msgEl.textContent = `❌ 補登成功但標完成失敗：${cErr.message}`; return; }
+      formEl.innerHTML = ''; await fetchMakeups(); applyAndRender(container);
+    });
   }
 
-  window.PanelMakeupOverview = { loadMakeupOverviewPanel, buildMakeupCard, _loadAbsencesInto };
+  window.PanelMakeupOverview = { loadMakeupOverviewPanel, buildMakeupCard, _loadAbsencesInto, renderGroupedByClass, inlineConfirm };
 })();

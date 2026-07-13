@@ -18,17 +18,22 @@
 
   function renderShell(container) {
     container.innerHTML = `
-      <div class="buke-tabs">
-        <div class="buke-tab" data-tab="overview">補課／調課總覽</div>
+      <div class="buke-tabs tabs-3">
+        <div class="buke-tab" data-tab="makeup">補課登記</div>
+        <div class="buke-tab" data-tab="transfer">日夜補登記</div>
         <div class="buke-tab active" data-tab="late">逾期補課登記</div>
       </div>
       <div id="ml-form" style="margin-bottom:12px"></div>
       <div id="ml-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
       <div id="ml-list"></div>`;
 
-    container.querySelector('[data-tab="overview"]').addEventListener('click', () => {
+    container.querySelector('[data-tab="makeup"]').addEventListener('click', () => {
       container.innerHTML = '';
       window.PanelMakeupOverview.loadMakeupOverviewPanel(_sb, container);
+    });
+    container.querySelector('[data-tab="transfer"]').addEventListener('click', () => {
+      container.innerHTML = '';
+      window.PanelTransferOverview.loadTransferOverviewPanel(_sb, container);
     });
 
     // 任何清單內的按鈕／勾選操作後，稍等一下再重新整理清單，避免標完成／刪除／編輯後畫面卡在舊狀態
