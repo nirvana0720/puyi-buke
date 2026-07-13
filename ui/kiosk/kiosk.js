@@ -258,34 +258,32 @@ function todayStr() {
   // ── 現場查詢學員（補課） ──────────────────────────────────────
   document.getElementById('mk-lookup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const code    = e.target.querySelector('[name="member_code"]').value.trim();
-    const msgEl   = document.getElementById('mk-lookup-msg');
-    const btn     = e.target.querySelector('[type="submit"]');
+    const input    = e.target.querySelector('[name="member_code"]').value.trim();
+    const msgEl    = document.getElementById('mk-lookup-msg');
+    const btn      = e.target.querySelector('[type="submit"]');
     const resultEl = document.getElementById('mk-lookup-result');
-    msgEl.textContent = ''; resultEl.innerHTML = '';
     btn.disabled = true; btn.textContent = '查詢中…';
     try {
-      const result = await kioskLookupMember(sb, staff.staff_id, code);
-      if (!result.found) {
-        msgEl.textContent = `查無學員：${result.reason || ''}`;
-        msgEl.style.color = 'var(--danger-tx)';
-      } else {
-        renderMakeupRegisterForm(
-          'mk-lookup-result',
-          result,
-          result.classes || [],
-          todayStr(),
-          async (formData) => {
-            await kioskRegisterMakeup(sb, staff.staff_id, formData.memberDbId, formData);
-          },
-          () => {
-            loadDay(datePicker.value);
-            resultEl.innerHTML = '';
-            msgEl.textContent = '✅ 已登記，清單已更新。';
-            msgEl.style.color = 'var(--ok-tx)';
-          }
-        );
-      }
+      await window.KioskNameSearch.kioskSmartLookup(sb, staff.staff_id, input, {
+        resultEl, msgEl,
+        onFound: (result) => {
+          renderMakeupRegisterForm(
+            'mk-lookup-result',
+            result,
+            result.classes || [],
+            todayStr(),
+            async (formData) => {
+              await kioskRegisterMakeup(sb, staff.staff_id, formData.memberDbId, formData);
+            },
+            () => {
+              loadDay(datePicker.value);
+              resultEl.innerHTML = '';
+              msgEl.textContent = '✅ 已登記，清單已更新。';
+              msgEl.style.color = 'var(--ok-tx)';
+            }
+          );
+        },
+      });
     } catch (err) {
       msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
     }
@@ -295,29 +293,27 @@ function todayStr() {
   // ── 現場查詢學員（調班） ──────────────────────────────────────
   document.getElementById('tr-lookup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const code    = e.target.querySelector('[name="member_code"]').value.trim();
-    const msgEl   = document.getElementById('tr-lookup-msg');
-    const btn     = e.target.querySelector('[type="submit"]');
+    const input    = e.target.querySelector('[name="member_code"]').value.trim();
+    const msgEl    = document.getElementById('tr-lookup-msg');
+    const btn      = e.target.querySelector('[type="submit"]');
     const resultEl = document.getElementById('tr-lookup-result');
-    msgEl.textContent = ''; resultEl.innerHTML = '';
     btn.disabled = true; btn.textContent = '查詢中…';
     try {
-      const result = await kioskLookupMember(sb, staff.staff_id, code);
-      if (!result.found) {
-        msgEl.textContent = `查無學員：${result.reason || ''}`;
-        msgEl.style.color = 'var(--danger-tx)';
-      } else {
-        renderTransferRegisterForm(
-          'tr-lookup-result',
-          result,
-          result.upcoming || [],
-          result.targets  || [],
-          async (fromSessionRef, toClassRef, toDate) => {
-            await kioskRegisterTransfer(sb, staff.staff_id, result.member_db_id, fromSessionRef, toClassRef, toDate);
-            loadDay(datePicker.value);
-          }
-        );
-      }
+      await window.KioskNameSearch.kioskSmartLookup(sb, staff.staff_id, input, {
+        resultEl, msgEl,
+        onFound: (result) => {
+          renderTransferRegisterForm(
+            'tr-lookup-result',
+            result,
+            result.upcoming || [],
+            result.targets  || [],
+            async (fromSessionRef, toClassRef, toDate) => {
+              await kioskRegisterTransfer(sb, staff.staff_id, result.member_db_id, fromSessionRef, toClassRef, toDate);
+              loadDay(datePicker.value);
+            }
+          );
+        },
+      });
     } catch (err) {
       msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
     }
@@ -327,33 +323,32 @@ function todayStr() {
   // ── 現場查詢學員（培訓補課） ─────────────────────────────────
   document.getElementById('training-lookup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const code     = e.target.querySelector('[name="member_code"]').value.trim();
+    const input    = e.target.querySelector('[name="member_code"]').value.trim();
     const msgEl    = document.getElementById('training-lookup-msg');
     const btn      = e.target.querySelector('[type="submit"]');
     const resultEl = document.getElementById('training-lookup-result');
-    msgEl.textContent = ''; resultEl.innerHTML = '';
     btn.disabled = true; btn.textContent = '查詢中…';
     try {
-      const [member, classes, rules] = await Promise.all([
-        kioskLookupMember(sb, staff.staff_id, code),
+      const [classes, rules] = await Promise.all([
         fetchKioskTrainingClasses(sb),
         fetchKioskMakeupRules(sb),
       ]);
-      if (!member.found) {
-        msgEl.textContent = `查無學員：${member.reason || ''}`; msgEl.style.color = 'var(--danger-tx)';
-      } else {
-        window.KioskTrainingRender.renderTrainingRegisterForm(
-          'training-lookup-result', member, classes, rules,
-          (classRef) => fetchKioskTrainingSessions(sb, classRef),
-          async (trainingSessionRef, note, plannedDate, plannedSlot, earphone) => {
-            await kioskRegisterTrainingMakeup(sb, staff.staff_id, member.member_db_id, trainingSessionRef, note, plannedDate, plannedSlot, earphone);
-            loadDay(datePicker.value);
-            resultEl.innerHTML = '';
-            msgEl.textContent = '✅ 培訓補課已登記，清單已更新。';
-            msgEl.style.color = 'var(--ok-tx)';
-          }
-        );
-      }
+      await window.KioskNameSearch.kioskSmartLookup(sb, staff.staff_id, input, {
+        resultEl, msgEl,
+        onFound: (member) => {
+          window.KioskTrainingRender.renderTrainingRegisterForm(
+            'training-lookup-result', member, classes, rules,
+            (classRef) => fetchKioskTrainingSessions(sb, classRef),
+            async (trainingSessionRef, note, plannedDate, plannedSlot, earphone) => {
+              await kioskRegisterTrainingMakeup(sb, staff.staff_id, member.member_db_id, trainingSessionRef, note, plannedDate, plannedSlot, earphone);
+              loadDay(datePicker.value);
+              resultEl.innerHTML = '';
+              msgEl.textContent = '✅ 培訓補課已登記，清單已更新。';
+              msgEl.style.color = 'var(--ok-tx)';
+            }
+          );
+        },
+      });
     } catch (err) {
       msgEl.textContent = `❌ ${err.message}`; msgEl.style.color = 'var(--danger-tx)';
     }

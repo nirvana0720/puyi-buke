@@ -127,10 +127,10 @@
     </button>
     <div id="panel-mk-register" style="display:none;margin-bottom:14px">
       <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
         <form id="mk-lookup-form" style="display:flex;gap:8px;align-items:center">
-          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345"
-                 inputmode="numeric" maxlength="20">
+          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
+                 maxlength="30">
           <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
         </form>
         <div id="mk-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
@@ -144,10 +144,10 @@
     </button>
     <div id="panel-training-register" style="display:none;margin-bottom:14px">
       <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
         <form id="training-lookup-form" style="display:flex;gap:8px;align-items:center">
           <input type="text" name="member_code" class="buke-input" style="flex:1"
-                 placeholder="例：000012345" inputmode="numeric" maxlength="20">
+                 placeholder="例：000012345 或 王小明" maxlength="30">
           <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
         </form>
         <div id="training-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
@@ -161,10 +161,10 @@
     </button>
     <div id="panel-tr-register" style="display:none;margin-bottom:14px">
       <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號查詢</div>
+        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
         <form id="tr-lookup-form" style="display:flex;gap:8px;align-items:center">
-          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345"
-                 inputmode="numeric" maxlength="20">
+          <input type="text" name="member_code" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
+                 maxlength="30">
           <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
         </form>
         <div id="tr-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
@@ -179,6 +179,7 @@
 <script src="../../config/config.js" onerror="document.getElementById('login-err').textContent='設定檔載入失敗'"></script>
 <script src="kiosk_render.js"></script>
 <script src="kiosk_render_training.js"></script>
+<script src="kiosk_name_search.js"></script>
 <script src="kiosk.js"></script>
 </body>
 </html>
