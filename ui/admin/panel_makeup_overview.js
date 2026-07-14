@@ -23,7 +23,7 @@
     let allAttMap = new Map(); // makeup_ref → 所有紀錄[]，由舊到新
     if (muIds.length) {
       const { data: attRows, error: attErr } = await _sb.from('makeup_attendances')
-        .select('makeup_ref,attended_at,departed_at,late_mark')
+        .select('id,makeup_ref,attended_at,departed_at,late_mark')
         .in('makeup_ref', muIds)
         .order('attended_at', { ascending: false });
       if (attErr) throw new Error(`補課出席紀錄：${attErr.message}`);
@@ -56,6 +56,7 @@
   const uncompleteMakeup = id => _sb.rpc('uncomplete_makeup', { p_makeup_id: id });
   const deleteMakeup     = id => _sb.from('makeups').delete().eq('id', id);
   const updateMakeup     = (id, f) => _sb.from('makeups').update(f).eq('id', id);
+  const cancelAttendRecord = id => _sb.rpc('admin_makeup_cancel_attend', { p_attendance_id: id });
 
   // ── 面板入口 ────────────────────────────────────────────────
 
@@ -270,8 +271,9 @@
         ${r._att_records.length > 0 ? `
           <div style="margin-top:4px">
             ${r._att_records.map((a, idx) =>
-              `<div style="font-size:13px;color:var(--muted)">
-                 第 ${idx+1} 次到場：${new Date(a.attended_at).toLocaleString('zh-TW',{hour12:false})}${a.departed_at ? ` → 離場 ${new Date(a.departed_at).toLocaleString('zh-TW',{hour12:false})}（${Math.round((new Date(a.departed_at)-new Date(a.attended_at))/60000)} 分）` : ''}${a.late_mark ? `　遲到：${a.late_mark}` : ''}
+              `<div style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px">
+                 <span>第 ${idx+1} 次到場：${new Date(a.attended_at).toLocaleString('zh-TW',{hour12:false})}${a.departed_at ? ` → 離場 ${new Date(a.departed_at).toLocaleString('zh-TW',{hour12:false})}（${Math.round((new Date(a.departed_at)-new Date(a.attended_at))/60000)} 分）` : ''}${a.late_mark ? `　遲到：${a.late_mark}` : ''}</span>
+                 <button class="buke-btn buke-btn-ghost btn-del-att" data-att-id="${a.id}" style="font-size:12px;padding:1px 8px;min-height:22px">刪除此筆到場</button>
                </div>`
             ).join('')}
             <div style="font-size:13px;color:${r.status === '已完成' ? 'var(--ok-tx)' : 'var(--warn-tx)'}">
@@ -294,6 +296,14 @@
     card.querySelector('.btn-del-mu').addEventListener('click', () =>
       inlineConfirm(card, `確定刪除 ${r._name} 這筆補課登記？`, async () => { await deleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-edit-mu').addEventListener('click', () => toggleEditMakeup(card, r));
+    card.querySelectorAll('.btn-del-att').forEach(btn => {
+      btn.addEventListener('click', () =>
+        inlineConfirm(card, `確定刪除 ${r._name} 這筆到場紀錄？`, async () => {
+          const { error } = await cancelAttendRecord(Number(btn.dataset.attId));
+          if (error) throw new Error(error.message);
+          await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body);
+        }));
+    });
     return card;
   }
 

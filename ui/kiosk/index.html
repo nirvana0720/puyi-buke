@@ -95,6 +95,9 @@
 
   <div class="buke-wrap">
 
+    <!-- 到場提醒（站內警示） -->
+    <div id="kiosk-attendance-alerts"></div>
+
     <!-- 今日調班 -->
     <div class="kiosk-section">
       <div class="kiosk-section-title">今日日↔夜間調班補課</div>
@@ -112,6 +115,14 @@
       <div class="buke-section" style="margin-bottom:8px">📋 今日到場記錄</div>
       <div id="kiosk-today-log">
         <p class="buke-empty">今日尚無補課到場記錄。</p>
+      </div>
+    </div>
+
+    <!-- 今日登記清單 -->
+    <div style="margin-top:16px">
+      <div class="buke-section" style="margin-bottom:8px">📝 今日登記清單</div>
+      <div id="kiosk-today-registrations">
+        <p class="buke-empty">今日尚無新登記。</p>
       </div>
     </div>
 
@@ -183,6 +194,7 @@
 <script src="kiosk_render.js"></script>
 <script src="kiosk_render_training.js"></script>
 <script src="kiosk_name_search.js"></script>
+<script src="kiosk_alerts.js"></script>
 <script src="kiosk.js"></script>
 </body>
 </html>

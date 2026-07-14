@@ -113,16 +113,59 @@ async function kioskRegisterTrainingMakeup(sb, staffId, memberDbId, trainingSess
   return data;
 }
 
-async function kioskRegisterTransfer(sb, staffId, memberDbId, fromSessionRef, toClassRef, toDate) {
+async function kioskRegisterTransfer(sb, staffId, memberDbId, fromSessionRef, toClassRef, toDate, note) {
   const { data, error } = await sb.rpc('kiosk_register_transfer', {
     p_staff_id:          staffId,
     p_member_db_id:      memberDbId,
     p_from_session_ref:  fromSessionRef,
     p_to_class_ref:      toClassRef,
     p_to_date:           toDate,
+    p_note:              note || null,
   });
   if (error) throw new Error(error.message);
   return data;
+}
+
+async function kioskEditTransferNote(sb, staffId, transferId, note) {
+  const { data, error } = await sb.rpc('kiosk_edit_transfer_note', { p_staff_id: staffId, p_transfer_id: transferId, p_note: note });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskGetAttendanceAlerts(sb, staffId) {
+  const { data, error } = await sb.rpc('kiosk_get_attendance_alerts', { p_staff_id: staffId });
+  if (error) throw new Error(error.message);
+  return data || { overdue_attendance: [], no_show: [] };
+}
+
+async function kioskMakeupCancelAttend(sb, staffId, makeupId) {
+  const { data, error } = await sb.rpc('kiosk_makeup_cancel_attend', { p_staff_id: staffId, p_makeup_id: makeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskTransferResetToRegistered(sb, staffId, transferId) {
+  const { data, error } = await sb.rpc('kiosk_transfer_reset_to_registered', { p_staff_id: staffId, p_transfer_id: transferId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskCancelMakeup(sb, staffId, makeupId) {
+  const { data, error } = await sb.rpc('kiosk_cancel_makeup', { p_staff_id: staffId, p_makeup_id: makeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskCancelTransfer(sb, staffId, transferId) {
+  const { data, error } = await sb.rpc('kiosk_cancel_transfer', { p_staff_id: staffId, p_transfer_id: transferId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskGetTodayRegistrations(sb, staffId) {
+  const { data, error } = await sb.rpc('kiosk_get_today_registrations', { p_staff_id: staffId });
+  if (error) throw new Error(error.message);
+  return data || { makeups: [], transfers: [] };
 }
 
 // ── 今天日期（台北時間） ──────────────────────────────────────────
@@ -208,6 +251,18 @@ function todayStr() {
     } catch (_) {}
   }
 
+  // ── 到場提醒（B）＋ 今日登記清單（G） ────────────────────────
+  async function loadAlertsAndRegistrations() {
+    try {
+      const alerts = await kioskGetAttendanceAlerts(sb, staff.staff_id);
+      window.KioskAlerts.renderAttendanceAlerts(alerts);
+    } catch (_) {}
+    try {
+      const regs = await kioskGetTodayRegistrations(sb, staff.staff_id);
+      window.KioskAlerts.renderTodayRegistrations(regs);
+    } catch (_) {}
+  }
+
   // ── 載入今日清單 ──────────────────────────────────────────────
   async function loadDay(date) {
     document.getElementById('kiosk-transfers').innerHTML         = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
@@ -220,35 +275,51 @@ function todayStr() {
         ...m,
         is_overdue: m.deadline_date != null && today > m.deadline_date,
       }));
-      renderTransfers(
-        day.transfers,
-        async (transferId) => {
+      renderTransfers(day.transfers, {
+        onAttend: async (transferId) => {
           await kioskTransferAttend(sb, staff.staff_id, transferId);
           loadDay(datePicker.value);
-        }
-      );
-      renderMakeups(
-        makeups,
-        async (makeupId) => { await kioskMakeupAttend(sb, staff.staff_id, makeupId); },
-        async (makeupId) => {
+        },
+        onEditNote: async (transferId, note) => {
+          await kioskEditTransferNote(sb, staff.staff_id, transferId, note);
+          loadDay(datePicker.value);
+        },
+        onReset: async (transferId) => {
+          await kioskTransferResetToRegistered(sb, staff.staff_id, transferId);
+          loadDay(datePicker.value);
+        },
+        onCancel: async (transferId) => {
+          await kioskCancelTransfer(sb, staff.staff_id, transferId);
+        },
+      });
+      renderMakeups(makeups, {
+        onAttend: async (makeupId) => { await kioskMakeupAttend(sb, staff.staff_id, makeupId); },
+        onDepart: async (makeupId) => {
           await kioskMakeupDepart(sb, staff.staff_id, makeupId);
           await loadTodayLog();
         },
-        async (makeupId) => {
+        onComplete: async (makeupId) => {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
           await loadTodayLog();
         },
-        async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
+        onEdit: async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
           await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
           loadDay(datePicker.value);
         },
-        async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode)
-      );
+        lookupMember: async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode),
+        onCancelAttend: async (makeupId) => {
+          await kioskMakeupCancelAttend(sb, staff.staff_id, makeupId);
+        },
+        onCancelReg: async (makeupId) => {
+          await kioskCancelMakeup(sb, staff.staff_id, makeupId);
+        },
+      });
       renderTrainingMakeupsToday(
         day.training_makeups || [],
         async (id) => { await kioskTrainingMakeupComplete(sb, staff.staff_id, id); }
       );
       await loadTodayLog();
+      await loadAlertsAndRegistrations();
     } catch (err) {
       document.getElementById('kiosk-transfers').innerHTML =
         `<p class="buke-msg err">❌ ${err.message}</p>`;
@@ -314,8 +385,8 @@ function todayStr() {
         'tr-lookup-result',
         result,
         result.classes || [],
-        async (memberDbId, fromSessionRef, toClassRef, toDate) => {
-          await kioskRegisterTransfer(sb, staff.staff_id, memberDbId, fromSessionRef, toClassRef, toDate);
+        async (memberDbId, fromSessionRef, toClassRef, toDate, note) => {
+          await kioskRegisterTransfer(sb, staff.staff_id, memberDbId, fromSessionRef, toClassRef, toDate, note);
           loadDay(datePicker.value);
         }
       );
@@ -402,8 +473,10 @@ if (typeof window !== 'undefined') {
   window.KioskLogic = {
     kioskGetDay, kioskTransferAttend, kioskMakeupAttend, kioskMakeupComplete,
     kioskMakeupDepart, kioskEditMakeup, kioskGetTodayLog,
-    kioskLookupMember, kioskRegisterMakeup, kioskRegisterTransfer,
+    kioskLookupMember, kioskRegisterMakeup, kioskRegisterTransfer, kioskEditTransferNote,
     fetchKioskTrainingClasses, fetchKioskTrainingSessions, kioskRegisterTrainingMakeup,
     kioskTrainingMakeupComplete,
+    kioskGetAttendanceAlerts, kioskMakeupCancelAttend, kioskTransferResetToRegistered,
+    kioskCancelMakeup, kioskCancelTransfer, kioskGetTodayRegistrations,
   };
 }

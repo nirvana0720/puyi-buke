@@ -10,7 +10,7 @@
 
   async function fetchTransfers() {
     const { data, error } = await _sb.from('transfers').select(
-      'id,to_date,status,attended_at,late_mark,registered_by,' +
+      'id,to_date,status,attended_at,late_mark,registered_by,note,' +
       'members!member_ref(name,group_id,classes(class_name)),' +
       'sessions!from_session_ref(date),' +
       'classes!to_class_ref(class_name)'
@@ -31,6 +31,8 @@
   // ── RPC / 資料操作 ──────────────────────────────────────────
 
   const deleteTransfer = id => _sb.from('transfers').delete().eq('id', id);
+  const updateTransferNote = (id, note) => _sb.from('transfers').update({ note }).eq('id', id);
+  const resetTransferToRegistered = id => _sb.rpc('admin_transfer_reset_to_registered', { p_transfer_id: id });
 
   // ── 面板入口 ────────────────────────────────────────────────
 
@@ -128,10 +130,13 @@
       <div style="font-size:14px;color:var(--muted);margin:6px 0">
         原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
         ${r.late_mark ? `　遲到：${r.late_mark}` : ''}　登記人：${r.registered_by}
+        ${r.note ? `　備註：${r.note}` : ''}
       </div>
       <div class="action-row" style="display:flex;gap:6px;flex-wrap:wrap">
         ${r.status!=='已出席' ? '<button class="buke-btn btn-tr-attend" style="font-size:13px;padding:4px 12px;min-height:30px">標已出席</button>' : ''}
         ${r.status!=='未到'   ? '<button class="buke-btn buke-btn-ghost btn-tr-absent" style="font-size:13px;padding:4px 12px;min-height:30px">標未到</button>' : ''}
+        ${(r.status==='已出席' || r.status==='未到') ? '<button class="buke-btn buke-btn-ghost btn-tr-reset" style="font-size:13px;padding:4px 12px;min-height:30px">重設為已登記</button>' : ''}
+        <button class="buke-btn buke-btn-ghost btn-edit-tr" style="font-size:13px;padding:4px 12px;min-height:30px">編輯備註</button>
         <button class="buke-btn buke-btn-danger btn-del-tr" style="font-size:13px;padding:4px 12px;min-height:30px">刪除</button>
       </div>
       <div class="edit-area"></div>`;
@@ -165,6 +170,32 @@
         if (error) throw new Error(error.message);
         await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
       }));
+    card.querySelector('.btn-tr-reset')?.addEventListener('click', () =>
+      window.PanelMakeupOverview.inlineConfirm(card,
+        `確定將 ${r._name} 這筆日夜補重設為已登記？已重設，但原班出勤紀錄不會自動復原，如需要請自行到學員總表核對。`,
+        async () => {
+          const { error } = await resetTransferToRegistered(r.id);
+          if (error) throw new Error(error.message);
+          await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
+        }));
+    card.querySelector('.btn-edit-tr').addEventListener('click', () => {
+      const editArea = card.querySelector('.edit-area');
+      if (editArea.innerHTML) { editArea.innerHTML = ''; return; }
+      editArea.innerHTML = `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+          <input class="buke-input f-trnote" style="font-size:14px;width:100%" value="${r.note || ''}">
+          <div style="display:flex;gap:8px">
+            <button class="buke-btn btn-save-trnote" style="font-size:13px;padding:4px 14px;min-height:30px">儲存</button>
+            <button class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 14px;min-height:30px" onclick="this.closest('.edit-area').innerHTML=''">取消</button>
+          </div>
+          <div class="edit-msg" style="font-size:13px"></div></div>`;
+      editArea.querySelector('.btn-save-trnote').addEventListener('click', async () => {
+        const note = editArea.querySelector('.f-trnote').value.trim() || null;
+        const msgEl = editArea.querySelector('.edit-msg');
+        const { error } = await updateTransferNote(r.id, note);
+        if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
+        await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
+      });
+    });
     return card;
   }
 

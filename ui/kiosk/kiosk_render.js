@@ -4,7 +4,9 @@
 'use strict';
 
 // ── 今日調班清單 ──────────────────────────────────────────────────
-function renderTransfers(transfers, onAttend) {
+// callbacks = {onAttend, onEditNote, onReset, onCancel}
+function renderTransfers(transfers, callbacks) {
+  const { onAttend, onEditNote, onReset, onCancel } = callbacks || {};
   const el = document.getElementById('kiosk-transfers');
   if (!el) return;
   if (!transfers.length) {
@@ -12,6 +14,8 @@ function renderTransfers(transfers, onAttend) {
   }
   el.innerHTML = transfers.map((t, i) => {
     const canAttend = t.status === '已登記';
+    const canReset  = t.status === '已出席' || t.status === '未到';
+    const canCancel = t.status === '已登記';
     const badge = t.status === '已出席' ? '<span class="buke-badge pass">✅ 已出席</span>'
                 : t.status === '未到'   ? '<span class="buke-badge danger">❌ 未到</span>'
                                         : '<span class="buke-badge warn">⏳ 已登記</span>';
@@ -22,11 +26,15 @@ function renderTransfers(transfers, onAttend) {
         </div>
         ${badge}
       </div>
-      ${canAttend ? `
-        <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
-          <button class="buke-btn" data-attend-transfer="${i}" style="font-size:14px;padding:5px 14px">出席</button>
-          <span id="tr-attend-msg-${i}" style="font-size:13px"></span>
-        </div>` : ''}
+      ${t.note ? `<div class="detail">備註：${t.note}</div>` : ''}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${canAttend ? `<button class="buke-btn" data-attend-transfer="${i}" style="font-size:13px;padding:5px 12px">出席</button>` : ''}
+        <button class="buke-btn buke-btn-ghost" data-edit-transfer="${i}" style="font-size:13px;padding:5px 12px">編輯備註</button>
+        ${canReset ? `<button class="buke-btn buke-btn-ghost" data-reset-transfer="${i}" style="font-size:13px;padding:5px 12px">重設為已登記</button>` : ''}
+        ${canCancel ? `<button class="buke-btn buke-btn-danger" data-cancel-transfer="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
+        <span id="tr-attend-msg-${i}" style="font-size:13px"></span>
+      </div>
+      <div class="tr-edit-area" id="tr-edit-${i}"></div>
     </div>`;
   }).join('');
 
@@ -46,10 +54,87 @@ function renderTransfers(transfers, onAttend) {
       }
     });
   });
+
+  el.querySelectorAll('[data-edit-transfer]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.editTransfer);
+      toggleEditTransferNoteForm(i, transfers[i], onEditNote);
+    });
+  });
+
+  el.querySelectorAll('[data-reset-transfer]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.resetTransfer);
+      const msg = document.getElementById(`tr-attend-msg-${i}`);
+      const ok = confirm('確定要重設為已登記嗎？已重設，但原班出勤紀錄不會自動復原，如需要請自行到學員總表核對。');
+      if (!ok) return;
+      btn.disabled = true; msg.textContent = '處理中…';
+      try {
+        await onReset(transfers[i].transfer_id);
+        msg.textContent = '✅ 已重設為已登記'; msg.style.color = 'var(--ok-tx)';
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-cancel-transfer]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.cancelTransfer);
+      const msg = document.getElementById(`tr-attend-msg-${i}`);
+      const ok = confirm(`確定要取消 ${transfers[i].member_name} 這筆日↔夜間調班補課登記嗎？`);
+      if (!ok) return;
+      btn.disabled = true; msg.textContent = '處理中…';
+      try {
+        await onCancel(transfers[i].transfer_id);
+        msg.textContent = '✅ 已取消登記'; msg.style.color = 'var(--ok-tx)';
+        btn.closest('.buke-card').style.display = 'none';
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ── 調班卡片備註編輯表單（只能改備註，日期/班別請走取消登記重新登記） ─
+function toggleEditTransferNoteForm(i, t, onEditNote) {
+  const area = document.getElementById(`tr-edit-${i}`);
+  if (!area) return;
+  if (area.innerHTML) { area.innerHTML = ''; return; }
+
+  area.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px;background:var(--bg);border-radius:var(--r-md)">
+    <label style="font-size:14px">備註
+      <input class="buke-input f-trnote" style="font-size:14px;margin-top:4px;width:100%" value="${t.note || ''}">
+    </label>
+    <div style="display:flex;gap:8px">
+      <button class="buke-btn f-trsave" style="font-size:13px;padding:4px 14px;min-height:30px">儲存</button>
+      <button class="buke-btn buke-btn-ghost f-trcancel" style="font-size:13px;padding:4px 14px;min-height:30px">取消</button>
+    </div>
+    <div class="f-trmsg" style="font-size:13px"></div>
+  </div>`;
+
+  const msgEl = area.querySelector('.f-trmsg');
+  area.querySelector('.f-trcancel').addEventListener('click', () => { area.innerHTML = ''; });
+  area.querySelector('.f-trsave').addEventListener('click', async () => {
+    const note = area.querySelector('.f-trnote').value.trim() || null;
+    const btn = area.querySelector('.f-trsave');
+    btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
+    try {
+      await onEditNote(t.transfer_id, note);
+      msgEl.textContent = '✅ 已儲存'; msgEl.style.color = 'var(--ok-tx)';
+    } catch (e) {
+      msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
+      btn.disabled = false;
+    }
+  });
 }
 
 // ── 今日補課清單 ──────────────────────────────────────────────────
-function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMember) {
+// callbacks = {onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg}
+function renderMakeups(makeups, callbacks) {
+  const { onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg } = callbacks || {};
   const el = document.getElementById('kiosk-makeups');
   if (!el) return;
   if (!makeups.length) {
@@ -69,6 +154,7 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
       : '';
     const disNext = (overdue || attendCount < 1) ? ' disabled' : '';
     const openHint = openAttendance ? '<span style="font-size:12px;color:var(--warn-tx)">（已到場中，尚未結案）</span>' : '';
+    const canCancelReg = attendCount === 0;
     return `<div class="${cardCls}" style="margin-bottom:10px">
       <div class="row">
         <div>
@@ -80,6 +166,7 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
       <div class="detail">缺課日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="buke-btn" data-attend-makeup="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>出席</button>
+        ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-makeup="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
         ${openHint}
         <button class="buke-btn" data-notdone-makeup="${i}"
                 style="font-size:13px;padding:5px 12px;background:var(--warn-bar);border-color:var(--warn-bar)"${disNext}>
@@ -92,6 +179,7 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
         <button class="buke-btn buke-btn-ghost" data-edit-makeup="${i}" style="font-size:13px;padding:5px 12px">
           編輯
         </button>
+        ${canCancelReg ? `<button class="buke-btn buke-btn-danger" data-cancelreg-makeup="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
         <span id="mk-msg-${i}" style="font-size:13px"></span>
       </div>
       <div class="mk-edit-area" id="mk-edit-${i}"></div>
@@ -160,6 +248,44 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
     btn.addEventListener('click', () => {
       const i = Number(btn.dataset.editMakeup);
       toggleEditMakeupForm(i, makeups[i], onEdit, lookupMember);
+    });
+  });
+
+  el.querySelectorAll('[data-cancelattend-makeup]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.cancelattendMakeup);
+      const msg = document.getElementById(`mk-msg-${i}`);
+      btn.disabled = true; msg.textContent = '取消中…';
+      try {
+        await onCancelAttend(makeups[i].makeup_id);
+        msg.textContent = '✅ 已取消到場'; msg.style.color = 'var(--ok-tx)';
+        const card = btn.closest('.buke-card');
+        card.querySelector('[data-attend-makeup]')?.removeAttribute('disabled');
+        card.querySelector('[data-notdone-makeup]')?.setAttribute('disabled', 'disabled');
+        card.querySelector('[data-complete-makeup]')?.setAttribute('disabled', 'disabled');
+        btn.remove();
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-cancelreg-makeup]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.cancelregMakeup);
+      const msg = document.getElementById(`mk-msg-${i}`);
+      const ok = confirm(`確定要取消 ${makeups[i].member_name} 這筆補課登記嗎？`);
+      if (!ok) return;
+      btn.disabled = true; msg.textContent = '處理中…';
+      try {
+        await onCancelReg(makeups[i].makeup_id);
+        msg.textContent = '✅ 已取消登記'; msg.style.color = 'var(--ok-tx)';
+        btn.closest('.buke-card').style.display = 'none';
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -277,10 +403,10 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
         <div id="mk-reg-class-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
       </div>
       <div>
-        <div style="font-size:14px;margin-bottom:4px">缺課日期 <span style="color:var(--danger-tx)">*</span></div>
-        <select name="session_ref" class="buke-select" style="width:100%" disabled>
-          <option value="">請先選擇班別</option>
-        </select>
+        <div style="font-size:14px;margin-bottom:4px">缺課日期（可複選連補） <span style="color:var(--danger-tx)">*</span></div>
+        <div id="mk-reg-sessions" style="display:flex;flex-direction:column;gap:6px">
+          <span style="color:var(--muted);font-size:14px">請先選擇班別</span>
+        </div>
         <div id="mk-reg-session-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
       </div>
       <div>
@@ -317,8 +443,8 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
   </div>`;
 
   const form = document.getElementById('mk-reg-form');
-  const classSel   = form.querySelector('[name="mk_class"]');
-  const sessionSel = form.querySelector('[name="session_ref"]');
+  const classSel  = form.querySelector('[name="mk_class"]');
+  const sessWrap  = document.getElementById('mk-reg-sessions');
   const setWarn = (id, txt) => {
     const w = document.getElementById(id);
     if (w) { w.textContent = txt; w.style.display = txt ? 'block' : 'none'; }
@@ -327,17 +453,22 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
   classSel.addEventListener('change', () => {
     const cr = Number(classSel.value);
     const cls = classMap.get(cr);
-    if (!cls) { sessionSel.innerHTML = '<option value="">請先選擇班別</option>'; sessionSel.disabled = true; return; }
-    sessionSel.innerHTML = '<option value="">請選擇</option>' + (cls.absences || []).map(a => {
+    if (!cls) { sessWrap.innerHTML = '<span style="color:var(--muted);font-size:14px">請先選擇班別</span>'; return; }
+    sessWrap.innerHTML = (cls.absences || []).map(a => {
       const wk = a.week_num ? ` 第${a.week_num}堂` : '';
       const hint = a.already_registered
         ? (a.attend_count >= 1
             ? `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}，已到 ${a.attend_count} 次，尚未補完課）`
             : `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}）`)
         : '';
-      return `<option value="${a.session_ref}" data-registered="${a.already_registered ? '1' : ''}" data-planned="${a.planned_date || ''} ${a.planned_slot || ''}">${cls.class_name}${wk} ${a.date}${hint}</option>`;
-    }).join('');
-    sessionSel.disabled = false;
+      return `<label style="font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" class="mk-sess-cb" value="${a.session_ref}"
+               data-registered="${a.already_registered ? '1' : ''}"
+               data-planned="${a.planned_date || ''} ${a.planned_slot || ''}"
+               data-label="${cls.class_name}${wk} ${a.date}" style="width:18px;height:18px">
+        ${cls.class_name}${wk} ${a.date}${hint}
+      </label>`;
+    }).join('') || '<span style="color:var(--muted);font-size:14px">此班無缺課堂次</span>';
   });
 
   form.addEventListener('submit', async e => {
@@ -346,7 +477,7 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     const msg = document.getElementById('mk-reg-msg');
     const clsOpt = classSel.options[classSel.selectedIndex];
     const memberDbId = Number(clsOpt?.dataset.member);
-    const sessionRef = Number(sessionSel.value);
+    const checkedBoxes = Array.from(sessWrap.querySelectorAll('.mk-sess-cb:checked'));
     const earVal  = form.querySelector('[name="earphone"]:checked')?.value;
     const dateVal = form.querySelector('[name="planned_date"]').value;
     const h = form.querySelector('[name="planned_hour"]').value;
@@ -355,11 +486,11 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     const note    = form.querySelector('[name="note"]').value.trim() || null;
 
     let blocked = false;
-    if (!memberDbId)  { setWarn('mk-reg-class-warn',   '⚠ 請選擇班別');     blocked = true; } else setWarn('mk-reg-class-warn', '');
-    if (!sessionRef)  { setWarn('mk-reg-session-warn', '⚠ 請選擇缺課日期'); blocked = true; } else setWarn('mk-reg-session-warn', '');
-    if (!earVal)      { setWarn('mk-reg-ear-warn',     '⚠ 請選擇是否借用耳機'); blocked = true; } else setWarn('mk-reg-ear-warn', '');
-    if (!dateVal)     { setWarn('mk-reg-date-warn',    '⚠ 請選擇日期');      blocked = true; } else setWarn('mk-reg-date-warn', '');
-    if (!timeVal)     { setWarn('mk-reg-time-warn',    '⚠ 請選擇時間');      blocked = true; } else setWarn('mk-reg-time-warn', '');
+    if (!memberDbId)         { setWarn('mk-reg-class-warn',   '⚠ 請選擇班別');       blocked = true; } else setWarn('mk-reg-class-warn', '');
+    if (!checkedBoxes.length){ setWarn('mk-reg-session-warn', '⚠ 請至少勾選一個缺課日期'); blocked = true; } else setWarn('mk-reg-session-warn', '');
+    if (!earVal)              { setWarn('mk-reg-ear-warn',     '⚠ 請選擇是否借用耳機'); blocked = true; } else setWarn('mk-reg-ear-warn', '');
+    if (!dateVal)             { setWarn('mk-reg-date-warn',    '⚠ 請選擇日期');      blocked = true; } else setWarn('mk-reg-date-warn', '');
+    if (!timeVal)             { setWarn('mk-reg-time-warn',    '⚠ 請選擇時間');      blocked = true; } else setWarn('mk-reg-time-warn', '');
 
     // 過去時間擋下
     if (dateVal && timeVal) {
@@ -370,20 +501,34 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     }
 
     if (blocked) return;
-    const sessOpt = sessionSel.options[sessionSel.selectedIndex];
-    if (sessOpt?.dataset.registered === '1') {
-      const ok = confirm(`此堂已登記補課時段：${sessOpt.dataset.planned}，要覆蓋成新的登記嗎？`);
+    const overwriteOnes = checkedBoxes.filter(cb => cb.dataset.registered === '1');
+    if (overwriteOnes.length) {
+      const list = overwriteOnes.map(cb => `${cb.dataset.label}（${cb.dataset.planned}）`).join('、');
+      const ok = confirm(`以下 ${overwriteOnes.length} 堂已登記補課時段：${list}，要覆蓋成新的登記嗎？`);
       if (!ok) return;
     }
+
     btn.disabled = true; msg.textContent = '登記中…'; msg.style.color = 'var(--muted)';
-    try {
-      await onSubmit({ memberDbId, sessionRef, earphone: earVal === 'true', plannedDate: dateVal, plannedSlot: timeVal, note });
-      msg.textContent = '✅ 登記成功！'; msg.style.color = 'var(--ok-tx)';
-      if (onReloadDay) onReloadDay();
-    } catch (err) {
-      msg.textContent = `❌ ${err.message}`; msg.style.color = 'var(--danger-tx)';
-      btn.disabled = false;
+    const results = [];
+    for (const cb of checkedBoxes) {
+      try {
+        await onSubmit({ memberDbId, sessionRef: Number(cb.value), earphone: earVal === 'true', plannedDate: dateVal, plannedSlot: timeVal, note });
+        results.push({ ok: true, label: cb.dataset.label });
+      } catch (err) {
+        results.push({ ok: false, label: cb.dataset.label, error: err.message });
+      }
     }
+    const okCount   = results.filter(r => r.ok).length;
+    const failed    = results.filter(r => !r.ok);
+    if (!failed.length) {
+      msg.textContent = `✅ 已成功登記 ${okCount} 堂！`; msg.style.color = 'var(--ok-tx)';
+      if (onReloadDay) onReloadDay();
+      return;
+    }
+    msg.innerHTML = `⚠ 成功 ${okCount} 堂，失敗 ${failed.length} 堂：<br>` +
+      failed.map(f => `❌ ${f.label}：${f.error}`).join('<br>');
+    msg.style.color = 'var(--danger-tx)';
+    btn.disabled = false;
   });
 }
 
@@ -433,6 +578,10 @@ function renderTransferRegisterForm(containerId, member, classes, onSubmit) {
         <input type="date" name="to_date" id="tr-reg-date" class="buke-input" style="width:100%">
         <div id="tr-reg-date-auto" style="font-size:13px;color:var(--muted);display:none;margin-top:2px"></div>
         <div id="tr-reg-date-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
+      </div>
+      <div>
+        <div style="font-size:14px;margin-bottom:4px">備註（選填）</div>
+        <input type="text" name="note" class="buke-input" style="width:100%" placeholder="例：請安排觀看">
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button type="submit" class="buke-btn">登記日↔夜間調班補課</button>
@@ -492,9 +641,10 @@ function renderTransferRegisterForm(containerId, member, classes, onSubmit) {
     if (!dateVal) { setWarn('tr-reg-date-warn','⚠ 請選擇去上課日期'); blocked=true; } else setWarn('tr-reg-date-warn','');
     if (blocked) return;
     const memberDbId = classMap.get(srcVal)?.member_db_id;
+    const note = form.querySelector('[name="note"]').value.trim() || null;
     btn.disabled = true; msg.textContent = '登記中…'; msg.style.color='var(--muted)';
     try {
-      await onSubmit(memberDbId, Number(fromVal), Number(toVal), dateVal);
+      await onSubmit(memberDbId, Number(fromVal), Number(toVal), dateVal, note);
       msg.textContent = '✅ 日↔夜間調班補課已登記！'; msg.style.color='var(--ok-tx)'; btn.textContent='已登記';
     } catch (err) {
       msg.textContent = `❌ ${err.message}`; msg.style.color='var(--danger-tx)'; btn.disabled=false;
