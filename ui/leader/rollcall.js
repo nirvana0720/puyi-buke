@@ -25,15 +25,32 @@ function _markBadge(mark) {
   return `<span class="buke-badge ${info.cls}">${info.label}</span>`;
 }
 
-// 已補課完成清單（後端已依「補課完成日期最新在前」排序好，這裡照原順序列出全部，不截斷）
-function _makeupList(records) {
+// 全班補課完成清單（後端已依「補課完成日期最新在前」排序好，這裡照原順序列出全部，不截斷）
+function _renderMakeupCompletions(records) {
   if (!records || !records.length) return '';
   const rows = records.map(r => {
     const label = ROLLCALL_MARK_MAP[r.mark]?.label || r.mark || '補課';
     const sd = (r.session_date || '').slice(5);
-    return `<div style="font-size:12px;color:var(--muted)">補課完成：${sd}（${label}）</div>`;
+    const cd = (r.completed_date || '').slice(5) || '—';
+    return `
+      <div style="display:grid;grid-template-columns:1fr 1fr 70px 60px;gap:8px;padding:8px 10px;
+                  border-top:1px solid var(--line);align-items:center;font-size:13px">
+        <div style="font-weight:500">${r.member_name}</div>
+        <div style="color:var(--muted)">${sd}</div>
+        <div style="color:var(--header)">${cd}</div>
+        <div><span class="buke-badge makeup" style="font-size:11px">${label}</span></div>
+      </div>`;
   }).join('');
-  return `<div style="margin-top:2px">${rows}</div>`;
+  return `
+    <div class="buke-section" style="margin:20px 0 4px">補課完成名單</div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">依最新完成日期排序，方便對照紙本紀錄補登。</p>
+    <div style="border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden">
+      <div style="display:grid;grid-template-columns:1fr 1fr 70px 60px;gap:8px;padding:6px 10px;
+                  background:var(--surface-alt);font-size:12px;color:var(--muted)">
+        <div>學員</div><div>缺課日</div><div>完成日</div><div>標記</div>
+      </div>
+      ${rows}
+    </div>`;
 }
 
 function renderRollcall(container, data) {
@@ -64,7 +81,6 @@ function renderRollcall(container, data) {
             </div>
             ${_markBadge(m.mark)}
           </div>
-          ${_makeupList(m.makeup_records)}
         </div>`).join('')}
     </div>`).join('');
 
@@ -75,6 +91,7 @@ function renderRollcall(container, data) {
     </div>
     ${noticeHtml}
     ${groupsHtml || '<p class="buke-empty">此班目前無在學學員。</p>'}
+    ${_renderMakeupCompletions(data.makeup_completions)}
   `;
 }
 
