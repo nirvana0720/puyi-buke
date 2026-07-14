@@ -63,8 +63,12 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
       : attendCount >= 1 ? '<span class="buke-badge warn">⏳ 尚未補完課</span>'
       : '<span class="buke-badge warn">⏳ 待補課</span>';
     const cardCls = overdue ? 'buke-card care' : 'buke-card warn';
-    const disAttr = overdue ? ' disabled title="已逾期"' : '';
+    const openAttendance = !!m.has_open_attendance;
+    const disAttr = (overdue || openAttendance)
+      ? ` disabled title="${overdue ? '已逾期' : '已到場中，請先按「此堂課尚未補完」或「補課完成」結案'}"`
+      : '';
     const disNext = (overdue || attendCount < 1) ? ' disabled' : '';
+    const openHint = openAttendance ? '<span style="font-size:12px;color:var(--warn-tx)">（已到場中，尚未結案）</span>' : '';
     return `<div class="${cardCls}" style="margin-bottom:10px">
       <div class="row">
         <div>
@@ -76,6 +80,7 @@ function renderMakeups(makeups, onAttend, onDepart, onComplete, onEdit, lookupMe
       <div class="detail">缺課日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="buke-btn" data-attend-makeup="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>出席</button>
+        ${openHint}
         <button class="buke-btn" data-notdone-makeup="${i}"
                 style="font-size:13px;padding:5px 12px;background:var(--warn-bar);border-color:var(--warn-bar)"${disNext}>
           此堂課尚未補完
@@ -383,41 +388,43 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
 }
 
 // ── 現場調班登記表單 ──────────────────────────────────────────────
-function renderTransferRegisterForm(containerId, member, upcoming, targets, onSubmit) {
+// classes = [{member_db_id, class_ref, class_name, upcoming:[{session_ref,date,week_num}], targets:[{class_ref,class_name,sessions:[{week_num,date}]}]}]
+function renderTransferRegisterForm(containerId, member, classes, onSubmit) {
   const el = document.getElementById(containerId);
   if (!el) return;
 
-  if (!upcoming.length) {
+  const eligible = (classes || []).filter(c => c.upcoming?.length > 0 && c.targets?.length > 0);
+  if (!eligible.length) {
     el.innerHTML = `<div class="buke-card" style="margin-top:10px">
       <div class="row"><span class="name">${member.name}</span><span class="meta">${member.class_name}</span></div>
-      <div class="detail" style="margin-top:6px">目前無可日↔夜間調班補課的未來堂次。</div>
-    </div>`; return;
-  }
-  if (!targets.length) {
-    el.innerHTML = `<div class="buke-card" style="margin-top:10px">
-      <div class="row"><span class="name">${member.name}</span><span class="meta">${member.class_name}</span></div>
-      <div class="detail" style="margin-top:6px">目前無同級別其他班。</div>
+      <div class="detail" style="margin-top:6px">目前無可日↔夜間調班補課的班級／堂次。</div>
     </div>`; return;
   }
 
-  const upOpts  = upcoming.map(s => `<option value="${s.session_ref}" data-week="${s.week_num}">${s.date}（第${s.week_num}週）</option>`).join('');
-  const tgtOpts = targets.map(c  => `<option value="${c.class_ref}">${c.class_name}</option>`).join('');
-  const tgtMap  = new Map(targets.map(c => [c.class_ref, new Map((c.sessions||[]).map(s=>[s.week_num,s.date]))]));
+  const classMap = new Map(eligible.map(c => [String(c.class_ref), c]));
+  const classOpts = eligible.map(c => `<option value="${c.class_ref}">${c.class_name}</option>`).join('');
 
   el.innerHTML = `<div class="buke-card" style="margin-top:10px">
     <div class="row"><span class="name">${member.name}</span><span class="meta">${member.class_name}</span></div>
     <form id="tr-reg-form" style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
       <div>
-        <div style="font-size:14px;margin-bottom:4px">哪一堂課要日↔夜間調班補課 <span style="color:var(--danger-tx)">*</span></div>
-        <select name="from_session" class="buke-select" style="width:100%">
-          <option value="">請選擇</option>${upOpts}
+        <div style="font-size:14px;margin-bottom:4px">哪一班要日↔夜間調班補課 <span style="color:var(--danger-tx)">*</span></div>
+        <select name="src_class" class="buke-select" style="width:100%">
+          <option value="">請選擇班別</option>${classOpts}
+        </select>
+        <div id="tr-reg-srcclass-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
+      </div>
+      <div>
+        <div style="font-size:14px;margin-bottom:4px">哪一堂課 <span style="color:var(--danger-tx)">*</span></div>
+        <select name="from_session" class="buke-select" style="width:100%" disabled>
+          <option value="">請先選擇班別</option>
         </select>
         <div id="tr-reg-from-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
       </div>
       <div>
         <div style="font-size:14px;margin-bottom:4px">調去哪一班 <span style="color:var(--danger-tx)">*</span></div>
-        <select name="to_class" class="buke-select" style="width:100%">
-          <option value="">請選擇</option>${tgtOpts}
+        <select name="to_class" class="buke-select" style="width:100%" disabled>
+          <option value="">請先選擇班別</option>
         </select>
         <div id="tr-reg-class-warn" style="font-size:13px;color:var(--danger-tx);display:none;margin-top:2px"></div>
       </div>
@@ -434,11 +441,31 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
     </form>
   </div>`;
 
-  const form = document.getElementById('tr-reg-form');
+  const form    = document.getElementById('tr-reg-form');
+  const srcSel  = form.querySelector('[name="src_class"]');
   const fromSel = form.querySelector('[name="from_session"]');
   const toSel   = form.querySelector('[name="to_class"]');
   const dateInp = document.getElementById('tr-reg-date');
   const autoHint = document.getElementById('tr-reg-date-auto');
+  let tgtMap = new Map();
+
+  srcSel.addEventListener('change', () => {
+    const cls = classMap.get(srcSel.value);
+    dateInp.value = ''; autoHint.style.display = 'none';
+    if (!cls) {
+      fromSel.innerHTML = '<option value="">請先選擇班別</option>'; fromSel.disabled = true;
+      toSel.innerHTML   = '<option value="">請先選擇班別</option>'; toSel.disabled = true;
+      tgtMap = new Map();
+      return;
+    }
+    fromSel.innerHTML = '<option value="">請選擇</option>' + cls.upcoming
+      .map(s => `<option value="${s.session_ref}" data-week="${s.week_num}">${s.date}（第${s.week_num}週）</option>`).join('');
+    fromSel.disabled = false;
+    toSel.innerHTML = '<option value="">請選擇</option>' + cls.targets
+      .map(c => `<option value="${c.class_ref}">${c.class_name}</option>`).join('');
+    toSel.disabled = false;
+    tgtMap = new Map(cls.targets.map(c => [c.class_ref, new Map((c.sessions||[]).map(s=>[s.week_num,s.date]))]));
+  });
 
   function autoDate() {
     const opt = fromSel.options[fromSel.selectedIndex];
@@ -457,15 +484,17 @@ function renderTransferRegisterForm(containerId, member, upcoming, targets, onSu
     const btn = form.querySelector('[type="submit"]');
     const msg = document.getElementById('tr-reg-msg');
     const setWarn = (id, txt) => { const w=document.getElementById(id); if(w){w.textContent=txt;w.style.display=txt?'block':'none';} };
-    const fromVal = fromSel.value, toVal = toSel.value, dateVal = dateInp.value;
+    const srcVal = srcSel.value, fromVal = fromSel.value, toVal = toSel.value, dateVal = dateInp.value;
     let blocked = false;
+    if (!srcVal)  { setWarn('tr-reg-srcclass-warn','⚠ 請選擇班別'); blocked=true; } else setWarn('tr-reg-srcclass-warn','');
     if (!fromVal) { setWarn('tr-reg-from-warn','⚠ 請選擇堂次'); blocked=true; } else setWarn('tr-reg-from-warn','');
     if (!toVal)   { setWarn('tr-reg-class-warn','⚠ 請選擇目標班'); blocked=true; } else setWarn('tr-reg-class-warn','');
     if (!dateVal) { setWarn('tr-reg-date-warn','⚠ 請選擇去上課日期'); blocked=true; } else setWarn('tr-reg-date-warn','');
     if (blocked) return;
+    const memberDbId = classMap.get(srcVal)?.member_db_id;
     btn.disabled = true; msg.textContent = '登記中…'; msg.style.color='var(--muted)';
     try {
-      await onSubmit(Number(fromVal), Number(toVal), dateVal);
+      await onSubmit(memberDbId, Number(fromVal), Number(toVal), dateVal);
       msg.textContent = '✅ 日↔夜間調班補課已登記！'; msg.style.color='var(--ok-tx)'; btn.textContent='已登記';
     } catch (err) {
       msg.textContent = `❌ ${err.message}`; msg.style.color='var(--danger-tx)'; btn.disabled=false;

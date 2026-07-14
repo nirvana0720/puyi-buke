@@ -313,10 +313,9 @@ function todayStr() {
       renderTransferRegisterForm(
         'tr-lookup-result',
         result,
-        result.upcoming || [],
-        result.targets  || [],
-        async (fromSessionRef, toClassRef, toDate) => {
-          await kioskRegisterTransfer(sb, staff.staff_id, result.member_db_id, fromSessionRef, toClassRef, toDate);
+        result.classes || [],
+        async (memberDbId, fromSessionRef, toClassRef, toDate) => {
+          await kioskRegisterTransfer(sb, staff.staff_id, memberDbId, fromSessionRef, toClassRef, toDate);
           loadDay(datePicker.value);
         }
       );
