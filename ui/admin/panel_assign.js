@@ -7,10 +7,25 @@
 (function () {
   const {
     fetchClasses, fetchGroups, fetchMembersWithStatus, compareGroupNames, compareClassSchedule,
-    fetchAssignments, upsertAssignment, deleteAssignment,
+    fetchAssignments, setBaseRole, toggleRollcallRole,
   } = window.AdminData;
 
-  let _sb, _classRef, _groups, _members, _assignments;
+  let _sb, _classRef, _groups, _members, _assignments, _assignMap;
+
+  /**
+   * 把同一學員可能存在的多筆 assignments（基本身分＋點名）合併成一筆摘要
+   * @returns {Map<string, {base: object|null, rollcall: boolean}>}
+   */
+  function groupAssignments(rows) {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.member_id)) map.set(r.member_id, { base: null, rollcall: false });
+      const entry = map.get(r.member_id);
+      if (r.role === '點名') entry.rollcall = true;
+      else entry.base = r;
+    }
+    return map;
+  }
 
   async function loadAssignPanel(sb, container) {
     _sb = sb;
@@ -96,6 +111,7 @@
         fetchAssignments(_sb, _classRef),
         fetchGroups(_sb, _classRef),
       ]);
+      _assignMap = groupAssignments(_assignments);
 
       if (currentGroup) {
         // ── 選了特定組：列出該組所有在學學員 ────────────────
@@ -113,34 +129,33 @@
         currentEl.innerHTML =
           `<div class="buke-section warn" style="margin-bottom:8px">${currentGroup} — 在學學員</div>`;
         for (const m of groupMembers) {
-          const a = _assignments.find(x => x.member_id === m.member_id) || null;
-          currentEl.appendChild(buildMemberCard(m, a, container, currentGroup));
+          const info = _assignMap.get(m.member_id) || { base: null, rollcall: false };
+          currentEl.appendChild(buildMemberCard(m, info, container, currentGroup));
         }
 
       } else {
-        // ── 全部組：只列已指派的學長/班長 ＋ 搜尋框 ────────
+        // ── 全部組：只列已指派（基本身分或兼點名）＋ 搜尋框 ────────
         if (searchArea) searchArea.style.display = '';
 
-        // 排序：班長最前，接下來依組別（男1、男2…、女1、女2…）排序
-        const assigned = _assignments
-          .filter(a => a.role !== '學員')
-          .slice()
-          .sort((x, y) => {
-            const xHead = x.role === '班長' ? 0 : 1;
-            const yHead = y.role === '班長' ? 0 : 1;
+        // 排序：班長最前、學長次之、只兼點名的殿後，接下來依組別（男1、男2…、女1、女2…）排序
+        const assigned = [..._assignMap.entries()]
+          .filter(([, info]) => info.base || info.rollcall)
+          .sort(([, x], [, y]) => {
+            const head = info => info.base?.role === '班長' ? 0 : info.base?.role === '學長' ? 1 : 2;
+            const xHead = head(x), yHead = head(y);
             if (xHead !== yHead) return xHead - yHead;
-            return compareGroupNames(x.scope_group || '', y.scope_group || '');
+            return compareGroupNames(x.base?.scope_group || '', y.base?.scope_group || '');
           });
         if (!assigned.length) {
-          currentEl.innerHTML = '<p class="buke-empty">此班目前尚無學長/班長指派。請選特定組別或用搜尋框新增。</p>';
+          currentEl.innerHTML = '<p class="buke-empty">此班目前尚無學長/班長/點名指派。請選特定組別或用搜尋框新增。</p>';
           return;
         }
 
-        currentEl.innerHTML = '<div class="buke-section warn" style="margin-bottom:8px">目前指派（學長/班長）</div>';
-        for (const a of assigned) {
-          const m = _members.find(x => x.member_id === a.member_id);
+        currentEl.innerHTML = '<div class="buke-section warn" style="margin-bottom:8px">目前指派（學長/班長/點名）</div>';
+        for (const [memberId, info] of assigned) {
+          const m = _members.find(x => x.member_id === memberId);
           if (!m) continue;
-          currentEl.appendChild(buildMemberCard(m, a, container, ''));
+          currentEl.appendChild(buildMemberCard(m, info, container, ''));
         }
       }
     } catch (e) {
@@ -164,29 +179,34 @@
       : '<p class="buke-empty">找不到符合的學員。</p>';
 
     for (const m of found) {
-      const a = _assignments.find(x => x.member_id === m.member_id) || null;
-      resultEl.appendChild(buildMemberCard(m, a, container, false));
+      const info = _assignMap.get(m.member_id) || { base: null, rollcall: false };
+      resultEl.appendChild(buildMemberCard(m, info, container, false));
     }
   }
 
   /**
    * 建立一張學員操作卡
-   * @param {object}      m          學員資料
-   * @param {object|null} a          目前指派（可 null）
-   * @param {Element}     container  面板根元素（重新整理用）
-   * @param {string}      groupCtx   操作後重整時要保持的組別篩選（空字串=全部組模式）
+   * @param {object}  m          學員資料
+   * @param {object}  info       目前指派摘要 { base: object|null, rollcall: boolean }
+   * @param {Element} container  面板根元素（重新整理用）
+   * @param {string}  groupCtx   操作後重整時要保持的組別篩選（空字串=全部組模式）
    */
-  function buildMemberCard(m, a, container, groupCtx) {
+  function buildMemberCard(m, info, container, groupCtx) {
     const card = document.createElement('div');
     card.className = 'buke-card';
     card.style.marginBottom = '10px';
 
-    const role  = a?.role || '學員';
-    const scope = a?.scope_group || '';
-    const badgeCls = role === '班長' ? 'pass' : role === '學長' ? 'warn' : role === '點名' ? 'pass' : '';
-    const badgeEl  = badgeCls
-      ? `<span class="buke-badge ${badgeCls}">${role}${scope ? '（' + scope + '）' : ''}</span>`
+    const baseRole = info.base?.role || '學員';
+    const scope    = info.base?.scope_group || '';
+    const isRollcall = !!info.rollcall;
+
+    const baseBadgeCls = baseRole === '班長' ? 'pass' : baseRole === '學長' ? 'warn' : '';
+    const baseBadgeEl  = baseBadgeCls
+      ? `<span class="buke-badge ${baseBadgeCls}">${baseRole}${scope ? '（' + scope + '）' : ''}</span>`
       : `<span class="buke-badge" style="background:var(--line);color:var(--muted)">學員</span>`;
+    const rollcallBadgeEl = isRollcall
+      ? `<span class="buke-badge pass" style="margin-left:6px">📋 兼點名</span>`
+      : '';
 
     // 預設帶入該學員自己所在的組別（學長通常就是自己那組），已有指派則以指派的 scope_group 為準；
     // 兩者皆無時才留空白要求手動選
@@ -200,7 +220,7 @@
           <span class="name">${m.name}</span>
           <span class="meta">${m.dharma_name || ''}　${m.group_id || ''}${m.group_num ? '-' + m.group_num : ''}</span>
         </div>
-        ${badgeEl}
+        ${baseBadgeEl}${rollcallBadgeEl}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
         <select class="buke-select sel-scope" style="font-size:14px;padding:6px 10px;min-height:36px">
@@ -208,9 +228,12 @@
         </select>
         <button class="buke-btn buke-btn-ghost btn-set-leader" style="font-size:14px;padding:5px 12px;min-height:36px">設為學長</button>
         <button class="buke-btn buke-btn-ghost btn-set-head" style="font-size:14px;padding:5px 12px;min-height:36px">設為班長</button>
-        <button class="buke-btn buke-btn-ghost btn-set-rollcall" style="font-size:14px;padding:5px 12px;min-height:36px">設為點名</button>
-        ${a ? `<button class="buke-btn buke-btn-danger btn-remove"
+        ${info.base ? `<button class="buke-btn buke-btn-danger btn-remove"
                style="font-size:14px;padding:5px 12px;min-height:36px">移除指派</button>` : ''}
+        <label style="display:flex;align-items:center;gap:6px;font-size:14px;margin-left:4px;cursor:pointer">
+          <input type="checkbox" class="chk-rollcall" ${isRollcall ? 'checked' : ''}>
+          兼點名
+        </label>
       </div>
       <div class="inline-confirm" style="display:none;margin-top:10px;padding:10px;
            background:var(--surface);border-radius:var(--r-md);border:1px solid var(--line)">
@@ -241,22 +264,34 @@
       const scope = card.querySelector('.sel-scope').value;
       if (!scope) { icMsg.textContent = '請先選組別後再設為學長。'; icResult.textContent = ''; confirmArea.style.display = ''; return; }
       showConfirm(`確定將 ${m.name} 設為學長（${scope}）？`, () =>
-        upsertAssignment(_sb, { member_id: m.member_id, class_ref: _classRef, role: '學長', scope_group: scope }));
+        setBaseRole(_sb, { member_id: m.member_id, class_ref: _classRef, role: '學長', scope_group: scope }));
     });
 
     card.querySelector('.btn-set-head').addEventListener('click', () => {
       showConfirm(`確定將 ${m.name} 設為班長（可看整班）？`, () =>
-        upsertAssignment(_sb, { member_id: m.member_id, class_ref: _classRef, role: '班長', scope_group: null }));
-    });
-
-    card.querySelector('.btn-set-rollcall').addEventListener('click', () => {
-      showConfirm(`確定將 ${m.name} 設為點名（可看整班當天出缺勤）？`, () =>
-        upsertAssignment(_sb, { member_id: m.member_id, class_ref: _classRef, role: '點名', scope_group: null }));
+        setBaseRole(_sb, { member_id: m.member_id, class_ref: _classRef, role: '班長', scope_group: null }));
     });
 
     card.querySelector('.btn-remove')?.addEventListener('click', () => {
-      showConfirm(`確定移除 ${m.name} 的角色指派（恢復為一般學員）？`, () =>
-        deleteAssignment(_sb, m.member_id, _classRef));
+      showConfirm(`確定移除 ${m.name} 的基本身分（恢復為一般學員，不影響兼點名）？`, () =>
+        setBaseRole(_sb, { member_id: m.member_id, class_ref: _classRef, role: null, scope_group: null }));
+    });
+
+    card.querySelector('.chk-rollcall').addEventListener('change', async (e) => {
+      const on = e.target.checked;
+      e.target.disabled = true;
+      try {
+        await toggleRollcallRole(_sb, { member_id: m.member_id, class_ref: _classRef, on });
+        refreshAssignView(container, groupCtx);
+      } catch (err) {
+        icMsg.textContent = `❌ ${err.message}`;
+        icResult.textContent = '';
+        confirmArea.style.display = '';
+        card.querySelector('.ic-yes').onclick = () => { confirmArea.style.display = 'none'; };
+        card.querySelector('.ic-no').onclick = () => { confirmArea.style.display = 'none'; };
+        e.target.checked = !on;
+        e.target.disabled = false;
+      }
     });
 
     return card;

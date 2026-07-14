@@ -346,7 +346,9 @@ function todayStr() {
         () => {
           loadDay(datePicker.value);
           resultEl.innerHTML = '';
-          msgEl.textContent = '✅ 已登記，清單已更新。';
+          inputEl.value = '';
+          suggestEl.innerHTML = '';
+          msgEl.textContent = '✅ 已登記，清單已更新。可繼續輸入下一位學員。';
           msgEl.style.color = 'var(--ok-tx)';
         }
       );
@@ -388,6 +390,11 @@ function todayStr() {
         async (memberDbId, fromSessionRef, toClassRef, toDate, note) => {
           await kioskRegisterTransfer(sb, staff.staff_id, memberDbId, fromSessionRef, toClassRef, toDate, note);
           loadDay(datePicker.value);
+          resultEl.innerHTML = '';
+          inputEl.value = '';
+          suggestEl.innerHTML = '';
+          msgEl.textContent = '✅ 已登記，清單已更新。可繼續輸入下一位學員。';
+          msgEl.style.color = 'var(--ok-tx)';
         }
       );
     }
@@ -432,7 +439,9 @@ function todayStr() {
           await kioskRegisterTrainingMakeup(sb, staff.staff_id, member.member_db_id, trainingSessionRef, note, plannedDate, plannedSlot, earphone);
           loadDay(datePicker.value);
           resultEl.innerHTML = '';
-          msgEl.textContent = '✅ 培訓補課已登記，清單已更新。';
+          inputEl.value = '';
+          suggestEl.innerHTML = '';
+          msgEl.textContent = '✅ 培訓補課已登記，清單已更新。可繼續輸入下一位學員。';
           msgEl.style.color = 'var(--ok-tx)';
         }
       );

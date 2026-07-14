@@ -207,23 +207,46 @@ async function fetchAssignments(sb, classRef) {
   return data || [];
 }
 
-/** 新增或更新角色指派（upsert） */
-async function upsertAssignment(sb, { member_id, class_ref, role, scope_group }) {
-  const { error } = await sb
-    .from('assignments')
-    .upsert({ member_id, class_ref, role, scope_group: scope_group || null },
-             { onConflict: 'member_id,class_ref' });
-  if (error) throw new Error(`寫入指派失敗：${error.message}`);
-}
-
-/** 移除角色指派 */
-async function deleteAssignment(sb, member_id, class_ref) {
-  const { error } = await sb
+/**
+ * 設定/移除基本身分（學員/學長/班長，三者互斥）
+ * 先刪掉這個學員在這班原本的基本身分那一筆，role 有值才補插入新的一筆，
+ * 不會動到「點名」那一筆（點名是獨立可疊加的職務，見 toggleRollcallRole）。
+ * @param {string|null} role  '學長' | '班長' | null（null＝移除，恢復為一般學員）
+ */
+async function setBaseRole(sb, { member_id, class_ref, role, scope_group }) {
+  const { error: delErr } = await sb
     .from('assignments')
     .delete()
     .eq('member_id', member_id)
-    .eq('class_ref', class_ref);
-  if (error) throw new Error(`移除指派失敗：${error.message}`);
+    .eq('class_ref', class_ref)
+    .in('role', ['學員', '學長', '班長']);
+  if (delErr) throw new Error(`寫入指派失敗：${delErr.message}`);
+
+  if (role) {
+    const { error: insErr } = await sb
+      .from('assignments')
+      .insert({ member_id, class_ref, role, scope_group: scope_group || null });
+    if (insErr) throw new Error(`寫入指派失敗：${insErr.message}`);
+  }
+}
+
+/** 設定/取消「兼點名」職務，只動 role='點名' 那一筆，不影響基本身分 */
+async function toggleRollcallRole(sb, { member_id, class_ref, on }) {
+  if (on) {
+    const { error } = await sb
+      .from('assignments')
+      .upsert({ member_id, class_ref, role: '點名', scope_group: null },
+               { onConflict: 'member_id,class_ref,role' });
+    if (error) throw new Error(`設定兼點名失敗：${error.message}`);
+  } else {
+    const { error } = await sb
+      .from('assignments')
+      .delete()
+      .eq('member_id', member_id)
+      .eq('class_ref', class_ref)
+      .eq('role', '點名');
+    if (error) throw new Error(`取消兼點名失敗：${error.message}`);
+  }
 }
 
 if (typeof window !== 'undefined') {
@@ -234,6 +257,6 @@ if (typeof window !== 'undefined') {
     bindClassId, findClassByClassId,
     fetchSessions, updateSession, deleteSession,
     fetchMembersWithStatus, setMemberStatusLocal,
-    fetchAssignments, upsertAssignment, deleteAssignment,
+    fetchAssignments, setBaseRole, toggleRollcallRole,
   };
 }

@@ -25,10 +25,15 @@ function _markBadge(mark) {
   return `<span class="buke-badge ${info.cls}">${info.label}</span>`;
 }
 
-function _makeupTag(records) {
+// 已補課完成清單（後端已依「補課完成日期最新在前」排序好，這裡照原順序列出全部，不截斷）
+function _makeupList(records) {
   if (!records || !records.length) return '';
-  const dates = records.map(r => (r.session_date || '').slice(5)).join('、');
-  return `<span class="buke-badge makeup" style="margin-left:4px">補課：${dates}</span>`;
+  const rows = records.map(r => {
+    const label = ROLLCALL_MARK_MAP[r.mark]?.label || r.mark || '補課';
+    const sd = (r.session_date || '').slice(5);
+    return `<div style="font-size:12px;color:var(--muted)">補課完成：${sd}（${label}）</div>`;
+  }).join('');
+  return `<div style="margin-top:2px">${rows}</div>`;
 }
 
 function renderRollcall(container, data) {
@@ -54,11 +59,12 @@ function renderRollcall(container, data) {
         <div class="buke-card">
           <div class="row">
             <div>
-              <span class="name">${m.name}</span>${_makeupTag(m.makeup_records)}
+              <span class="name">${m.name}</span>
               <span class="meta">${m.dharma_name || ''}　${m.group_id || ''}${m.group_num ? '-' + m.group_num : ''}</span>
             </div>
             ${_markBadge(m.mark)}
           </div>
+          ${_makeupList(m.makeup_records)}
         </div>`).join('')}
     </div>`).join('');
 
