@@ -33,20 +33,20 @@ function _renderMakeupCompletions(records) {
     const sd = (r.session_date || '').slice(5);
     const cd = (r.completed_date || '').slice(5) || '—';
     return `
-      <div style="display:grid;grid-template-columns:1fr 1fr 70px 60px;gap:8px;padding:8px 10px;
-                  border-top:1px solid var(--line);align-items:center;font-size:13px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 80px 70px;gap:8px;padding:10px 12px;
+                  border-top:1px solid var(--line);align-items:center;font-size:18px">
         <div style="font-weight:500">${r.member_name}</div>
         <div style="color:var(--muted)">${sd}</div>
         <div style="color:var(--header)">${cd}</div>
-        <div><span class="buke-badge makeup" style="font-size:11px">${label}</span></div>
+        <div><span class="buke-badge makeup" style="font-size:15px">${label}</span></div>
       </div>`;
   }).join('');
   return `
-    <div class="buke-section" style="margin:20px 0 4px">補課完成名單</div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">依最新完成日期排序，方便對照紙本紀錄補登。</p>
-    <div style="border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden">
-      <div style="display:grid;grid-template-columns:1fr 1fr 70px 60px;gap:8px;padding:6px 10px;
-                  background:var(--surface-alt);font-size:12px;color:var(--muted)">
+    <div class="buke-section" style="margin:0 0 4px">補課完成名單</div>
+    <p style="font-size:15px;color:var(--muted);margin:0 0 8px">依最新完成日期排序，方便對照紙本紀錄補登。</p>
+    <div style="border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 80px 70px;gap:8px;padding:8px 12px;
+                  background:var(--surface-alt);font-size:14px;color:var(--muted)">
         <div>學員</div><div>缺課日</div><div>完成日</div><div>標記</div>
       </div>
       ${rows}
@@ -90,8 +90,8 @@ function renderRollcall(container, data) {
       <span class="sub">${data.session_date || ''} 點名表</span>
     </div>
     ${noticeHtml}
-    ${groupsHtml || '<p class="buke-empty">此班目前無在學學員。</p>'}
     ${_renderMakeupCompletions(data.makeup_completions)}
+    ${groupsHtml || '<p class="buke-empty">此班目前無在學學員。</p>'}
   `;
 }
 
