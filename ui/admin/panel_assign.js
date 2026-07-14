@@ -220,7 +220,7 @@
           <span class="name">${m.name}</span>
           <span class="meta">${m.dharma_name || ''}　${m.group_id || ''}${m.group_num ? '-' + m.group_num : ''}</span>
         </div>
-        ${baseBadgeEl}${rollcallBadgeEl}
+        <div>${baseBadgeEl}${rollcallBadgeEl}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
         <select class="buke-select sel-scope" style="font-size:14px;padding:6px 10px;min-height:36px">
