@@ -55,14 +55,14 @@ function renderTodayRegistrations(regs, callbacks) {
   const transfers = regs?.transfers || [];
 
   if (!makeups.length && !transfers.length) {
-    el.innerHTML = '<p class="buke-empty">今日尚無新登記。</p>';
+    el.innerHTML = '<p class="kiosk-listempty">今日尚無新登記。</p>';
     return;
   }
 
   const mkHtml = makeups.map(m => {
     const canCancel = m.status === '待補課' && (m.attend_count || 0) === 0;
     return `
-    <div style="font-size:14px;padding:4px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="kiosk-listrow" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <span>
         <span style="font-weight:500">${m.member_name}</span>
         <span style="color:var(--muted)">　${m.class_name}　缺課日：${m.session_date}　預約：${m.planned_date || ''} ${m.planned_slot || ''}　狀態：${m.status}</span>
@@ -74,7 +74,7 @@ function renderTodayRegistrations(regs, callbacks) {
   const trHtml = transfers.map(t => {
     const canCancel = t.status === '已登記';
     return `
-    <div style="font-size:14px;padding:4px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="kiosk-listrow" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <span>
         <span style="font-weight:500">${t.member_name}</span>
         <span style="color:var(--muted)">　${t.from_class_name} → ${t.to_class_name}　去上課日：${t.to_date}　狀態：${t.status}</span>
@@ -84,8 +84,8 @@ function renderTodayRegistrations(regs, callbacks) {
   }).join('');
 
   el.innerHTML = `
-    ${makeups.length ? `<div class="buke-section" style="margin-bottom:4px">補課（${makeups.length}）</div>${mkHtml}` : ''}
-    ${transfers.length ? `<div class="buke-section" style="margin:10px 0 4px">日↔夜間調班補課（${transfers.length}）</div>${trHtml}` : ''}
+    ${makeups.length ? `<div style="padding:8px 16px;font-size:13px;color:var(--muted);background:var(--surface-alt)">補課（${makeups.length}）</div><div>${mkHtml}</div>` : ''}
+    ${transfers.length ? `<div style="padding:8px 16px;font-size:13px;color:var(--muted);background:var(--surface-alt)">日↔夜間調班補課（${transfers.length}）</div><div>${trHtml}</div>` : ''}
   `;
 
   el.querySelectorAll('[data-cancel-reg-makeup]').forEach(btn => {

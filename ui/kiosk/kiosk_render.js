@@ -702,7 +702,7 @@ function renderTodayLog(records) {
   const el = document.getElementById('kiosk-today-log');
   if (!el) return;
   if (!records || !records.length) {
-    el.innerHTML = '<p class="buke-empty">今日尚無補課到場記錄。</p>';
+    el.innerHTML = '<p class="kiosk-listempty">今日尚無補課到場記錄。</p>';
     return;
   }
   function durStr(a, d) {
@@ -715,21 +715,21 @@ function renderTodayLog(records) {
     return new Date(ts).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
   }
   el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
-    <thead><tr style="border-bottom:2px solid var(--line);color:var(--muted);text-align:left">
-      <th style="padding:4px 8px">姓名</th><th style="padding:4px 8px">班別</th>
-      <th style="padding:4px 8px">缺課日</th><th style="padding:4px 8px">到場</th>
-      <th style="padding:4px 8px">離場</th><th style="padding:4px 8px">時長</th>
-      <th style="padding:4px 8px">狀態</th>
+    <thead><tr style="background:var(--surface-alt);color:var(--muted);text-align:left">
+      <th style="padding:8px">姓名</th><th style="padding:8px">班別</th>
+      <th style="padding:8px">缺課日</th><th style="padding:8px">到場</th>
+      <th style="padding:8px">離場</th><th style="padding:8px">時長</th>
+      <th style="padding:8px">狀態</th>
     </tr></thead>
     <tbody>
-      ${records.map(r => `<tr style="border-bottom:1px solid var(--line)">
-        <td style="padding:6px 8px;font-weight:500">${r.member_name}</td>
-        <td style="padding:6px 8px;color:var(--muted)">${r.class_name}</td>
-        <td style="padding:6px 8px;color:var(--muted)">${r.session_date}</td>
-        <td style="padding:6px 8px">${timeStr(r.attended_at)}</td>
-        <td style="padding:6px 8px">${timeStr(r.departed_at)}</td>
-        <td style="padding:6px 8px">${durStr(r.attended_at, r.departed_at)}</td>
-        <td style="padding:6px 8px;color:${r.status==='已完成'?'var(--ok-tx)':'var(--warn-tx)'}">${r.status==='已完成'?'✅ 補完':'⏳ 尚未補完'}</td>
+      ${records.map((r, i) => `<tr style="border-top:1px solid var(--line);${i % 2 ? 'background:var(--surface-alt)' : ''}">
+        <td style="padding:8px;font-weight:500">${r.member_name}</td>
+        <td style="padding:8px;color:var(--muted)">${r.class_name}</td>
+        <td style="padding:8px;color:var(--muted)">${r.session_date}</td>
+        <td style="padding:8px">${timeStr(r.attended_at)}</td>
+        <td style="padding:8px">${timeStr(r.departed_at)}</td>
+        <td style="padding:8px">${durStr(r.attended_at, r.departed_at)}</td>
+        <td style="padding:8px;color:${r.status==='已完成'?'var(--ok-tx)':'var(--warn-tx)'}">${r.status==='已完成'?'✅ 補完':'⏳ 尚未補完'}</td>
       </tr>`).join('')}
     </tbody>
   </table>`;

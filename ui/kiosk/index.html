@@ -27,13 +27,13 @@
     }
     .kiosk-regtab {
       flex: 1;
-      background: var(--surface);
-      border: 1px solid var(--line);
+      background: var(--header-tint);
+      border: 1.5px solid var(--header-tint-line);
       border-radius: var(--r-md) var(--r-md) 0 0;
       padding: 14px 10px;
       font-size: 16px;
       font-weight: 500;
-      color: var(--muted);
+      color: var(--header);
       cursor: pointer;
       font-family: inherit;
       text-align: center;
@@ -51,6 +51,32 @@
       border-radius: 0 0 var(--r-md) var(--r-md);
       padding: 16px;
       margin-bottom: 14px;
+    }
+    .kiosk-listcard {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .kiosk-listcard-title {
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--header);
+      background: var(--header-tint);
+    }
+    .kiosk-listrow {
+      padding: 10px 16px;
+      font-size: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .kiosk-listrow:first-child { border-top: none; }
+    .kiosk-listrow:nth-child(even) { background: var(--surface-alt); }
+    .kiosk-listempty {
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--muted);
     }
     #login-section {
       max-width: 360px;
@@ -172,18 +198,18 @@
     </div>
 
     <!-- 今日到場記錄 -->
-    <div style="margin-top:16px">
-      <div class="buke-section" style="margin-bottom:8px">📋 今日到場記錄</div>
+    <div class="kiosk-listcard">
+      <div class="kiosk-listcard-title">📋 今日到場記錄</div>
       <div id="kiosk-today-log">
-        <p class="buke-empty">今日尚無補課到場記錄。</p>
+        <p class="kiosk-listempty">今日尚無補課到場記錄。</p>
       </div>
     </div>
 
     <!-- 今日登記清單 -->
-    <div style="margin-top:16px">
-      <div class="buke-section" style="margin-bottom:8px">📝 今日登記清單</div>
+    <div class="kiosk-listcard">
+      <div class="kiosk-listcard-title">📝 今日登記清單</div>
       <div id="kiosk-today-registrations">
-        <p class="buke-empty">今日尚無新登記。</p>
+        <p class="kiosk-listempty">今日尚無新登記。</p>
       </div>
     </div>
 

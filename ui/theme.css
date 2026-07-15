@@ -11,6 +11,8 @@
   --muted:     #8A7F70;   /* 次要文字 */
   --line:      #E7DECE;   /* 分隔線 */
   --surface-alt: rgba(0,0,0,0.06); /* 表格表頭底色（半透明，任何背景色上都看得出來） */
+  --header-tint:      #F5E9E7; /* 淺棗紅底，用於未選取分頁／清單標題列，跟奶油底頁面明顯區隔 */
+  --header-tint-line: #C98F87; /* 淺棗紅框線，搭配 --header-tint 使用 */
 
   --ok-bg:#EAF3DE; --ok-tx:#27500A; --ok-bar:#639922; --ok-line:#C0DD97;
   --makeup-bg:#E1F5EE; --makeup-tx:#085041; --makeup-line:#9FE1CB;
