@@ -305,13 +305,19 @@
       const insertRow = {
         member_ref: _trMember.id, from_session_ref: ses[0].id,
         to_class_ref: toClass, to_date: toDate,
-        registered_by: '精舍',
-        ...(attendMark
-          ? { status: '已出席', attended_at: new Date().toISOString(), late_mark: attendMark }
-          : { status: '已登記' }),
+        registered_by: '精舍', status: '已登記',
       };
-      const { error } = await _sb.from('transfers').insert(insertRow);
+      const { data: inserted, error } = await _sb.from('transfers').insert(insertRow).select('id').single();
       if (error) { msgEl.textContent = `❌ ${error.message}`; return; }
+      // 若補登當下就選了「已出席」，改走 admin_transfer_mark_attended（跟即時登記的
+      // 「標已出席」共用同一支），確保原班堂次的 attendance 也會同步寫回，不會只有
+      // transfers 顯示已出席、出缺勤總表看不到這筆到場紀錄
+      if (attendMark) {
+        const { error: markErr } = await _sb.rpc('admin_transfer_mark_attended', {
+          p_transfer_id: inserted.id, p_late_mark: attendMark,
+        });
+        if (markErr) { msgEl.textContent = `❌ 補登成功，但標記已出席失敗：${markErr.message}`; return; }
+      }
       formEl.innerHTML = '';
       await fetchTransfers(); applyAndRender(container);
     });
