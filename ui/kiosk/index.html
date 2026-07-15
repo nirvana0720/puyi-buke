@@ -113,44 +113,7 @@
 
   <div class="buke-wrap">
 
-    <!-- 到場提醒（站內警示） -->
-    <div id="kiosk-attendance-alerts"></div>
-
-    <!-- 今日調班 -->
-    <div class="kiosk-section">
-      <div class="kiosk-section-title">今日日↔夜間調班補課</div>
-      <div id="kiosk-transfers"></div>
-    </div>
-
-    <!-- 今日補課 -->
-    <div class="kiosk-section">
-      <div class="kiosk-section-title">今日補課</div>
-      <div id="kiosk-makeups"></div>
-    </div>
-
-    <!-- 今日到場記錄 -->
-    <div style="margin-top:16px">
-      <div class="buke-section" style="margin-bottom:8px">📋 今日到場記錄</div>
-      <div id="kiosk-today-log">
-        <p class="buke-empty">今日尚無補課到場記錄。</p>
-      </div>
-    </div>
-
-    <!-- 今日登記清單 -->
-    <div style="margin-top:16px">
-      <div class="buke-section" style="margin-bottom:8px">📝 今日登記清單</div>
-      <div id="kiosk-today-registrations">
-        <p class="buke-empty">今日尚無新登記。</p>
-      </div>
-    </div>
-
-    <!-- 今日培訓補課 -->
-    <div class="kiosk-section">
-      <div class="kiosk-section-title">今日培訓補課</div>
-      <div id="kiosk-training-makeups"></div>
-    </div>
-
-    <!-- 現場登記／預約：分頁式，同時只會開一個，選中的整塊變深棗紅色 -->
+    <!-- 現場登記／預約：分頁式，同時只會開一個，選中的整塊變深棗紅色（移到最上面，最常用） -->
     <div class="kiosk-regtabs">
       <button class="kiosk-regtab" data-tab-panel="panel-mk-register">現場登記補課 / 其他日預約</button>
       <button class="kiosk-regtab" data-tab-panel="panel-training-register">現場登記培訓補課</button>
@@ -191,6 +154,43 @@
       <div id="tr-lookup-suggest" style="margin-top:6px"></div>
       <div id="tr-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
       <div id="tr-lookup-result"></div>
+    </div>
+
+    <!-- 到場提醒（站內警示） -->
+    <div id="kiosk-attendance-alerts"></div>
+
+    <!-- 今日調班 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日日↔夜間調班補課</div>
+      <div id="kiosk-transfers"></div>
+    </div>
+
+    <!-- 今日補課 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日補課</div>
+      <div id="kiosk-makeups"></div>
+    </div>
+
+    <!-- 今日到場記錄 -->
+    <div style="margin-top:16px">
+      <div class="buke-section" style="margin-bottom:8px">📋 今日到場記錄</div>
+      <div id="kiosk-today-log">
+        <p class="buke-empty">今日尚無補課到場記錄。</p>
+      </div>
+    </div>
+
+    <!-- 今日登記清單 -->
+    <div style="margin-top:16px">
+      <div class="buke-section" style="margin-bottom:8px">📝 今日登記清單</div>
+      <div id="kiosk-today-registrations">
+        <p class="buke-empty">今日尚無新登記。</p>
+      </div>
+    </div>
+
+    <!-- 今日培訓補課 -->
+    <div class="kiosk-section">
+      <div class="kiosk-section-title">今日培訓補課</div>
+      <div id="kiosk-training-makeups"></div>
     </div>
 
   </div><!-- /.buke-wrap -->
