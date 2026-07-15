@@ -87,7 +87,9 @@
     }
     .kiosk-collapse-arrow {
       display: inline-block;
-      font-size: 12px;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
       transition: transform .15s;
     }
     .kiosk-collapse-toggle.collapsed .kiosk-collapse-arrow {
@@ -203,7 +205,7 @@
     <!-- 今日調班 -->
     <div class="kiosk-section">
       <div class="kiosk-section-title kiosk-collapse-toggle" data-collapse-target="kiosk-transfers">
-        <span class="kiosk-collapse-arrow">▾</span> 今日日↔夜間調班補課
+        <span class="kiosk-collapse-arrow">▼</span> 今日日↔夜間調班補課
       </div>
       <div id="kiosk-transfers"></div>
     </div>
@@ -211,7 +213,7 @@
     <!-- 今日補課 -->
     <div class="kiosk-section">
       <div class="kiosk-section-title kiosk-collapse-toggle" data-collapse-target="kiosk-makeups">
-        <span class="kiosk-collapse-arrow">▾</span> 今日補課
+        <span class="kiosk-collapse-arrow">▼</span> 今日補課
       </div>
       <div id="kiosk-makeups"></div>
     </div>
@@ -227,7 +229,7 @@
     <!-- 今日登記清單 -->
     <div class="kiosk-listcard">
       <div class="kiosk-listcard-title kiosk-collapse-toggle" data-collapse-target="kiosk-today-registrations">
-        <span class="kiosk-collapse-arrow">▾</span> 📝 今日登記清單
+        <span class="kiosk-collapse-arrow">▼</span> 📝 今日登記清單
       </div>
       <div id="kiosk-today-registrations">
         <p class="kiosk-listempty">今日尚無新登記。</p>
