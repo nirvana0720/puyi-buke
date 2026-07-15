@@ -488,6 +488,18 @@ function todayStr() {
       }
     });
   });
+
+  // ── 今日調班／今日補課／今日登記清單：標題點擊收合展開（登記多時避免畫面太長）──
+  // 只切換內容 div 的 display，資料重新整理時只會換 innerHTML，收合狀態不受影響
+  document.querySelectorAll('[data-collapse-target]').forEach(header => {
+    header.addEventListener('click', () => {
+      const target = document.getElementById(header.dataset.collapseTarget);
+      if (!target) return;
+      const collapsing = target.style.display !== 'none';
+      target.style.display = collapsing ? 'none' : '';
+      header.classList.toggle('collapsed', collapsing);
+    });
+  });
 })();
 
 if (typeof window !== 'undefined') {

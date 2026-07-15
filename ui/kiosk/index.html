@@ -78,6 +78,21 @@
       font-size: 14px;
       color: var(--muted);
     }
+    .kiosk-collapse-toggle {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+    .kiosk-collapse-arrow {
+      display: inline-block;
+      font-size: 12px;
+      transition: transform .15s;
+    }
+    .kiosk-collapse-toggle.collapsed .kiosk-collapse-arrow {
+      transform: rotate(-90deg);
+    }
     #login-section {
       max-width: 360px;
       margin: 60px auto;
@@ -187,13 +202,17 @@
 
     <!-- 今日調班 -->
     <div class="kiosk-section">
-      <div class="kiosk-section-title">今日日↔夜間調班補課</div>
+      <div class="kiosk-section-title kiosk-collapse-toggle" data-collapse-target="kiosk-transfers">
+        <span class="kiosk-collapse-arrow">▾</span> 今日日↔夜間調班補課
+      </div>
       <div id="kiosk-transfers"></div>
     </div>
 
     <!-- 今日補課 -->
     <div class="kiosk-section">
-      <div class="kiosk-section-title">今日補課</div>
+      <div class="kiosk-section-title kiosk-collapse-toggle" data-collapse-target="kiosk-makeups">
+        <span class="kiosk-collapse-arrow">▾</span> 今日補課
+      </div>
       <div id="kiosk-makeups"></div>
     </div>
 
@@ -207,7 +226,9 @@
 
     <!-- 今日登記清單 -->
     <div class="kiosk-listcard">
-      <div class="kiosk-listcard-title">📝 今日登記清單</div>
+      <div class="kiosk-listcard-title kiosk-collapse-toggle" data-collapse-target="kiosk-today-registrations">
+        <span class="kiosk-collapse-arrow">▾</span> 📝 今日登記清單
+      </div>
       <div id="kiosk-today-registrations">
         <p class="kiosk-listempty">今日尚無新登記。</p>
       </div>
