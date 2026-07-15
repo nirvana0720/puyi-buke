@@ -181,11 +181,17 @@
     overlay.querySelector('.btn-close-detail').addEventListener('click', close);
 
     const body = overlay.querySelector('#detail-body');
+    await loadAndRenderDetail(memberDbId, body);
+  }
+
+  /** 重新抓 get_student_view 並整包重繪明細視窗（編輯出缺勤成功/取消後都靠這支刷新） */
+  async function loadAndRenderDetail(memberDbId, body) {
     try {
       const { data, error } = await _sb.rpc('get_student_view', { p_member_db_id: memberDbId });
       if (error) throw new Error(error.message);
       if (!data) { body.innerHTML = '<p class="buke-empty">查無資料。</p>'; return; }
       body.innerHTML = renderStudentDetail(data);
+      wireAttendanceEdit(body, data, memberDbId);
     } catch (e) {
       body.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
     }
@@ -194,6 +200,86 @@
   const MARK_LABEL = {
     V: '出席', L: '遲到', LL: '靜坐遲到', A: '晚到', O: '請假/缺席', M: '補課', ML: '靜坐補課',
   };
+  const MARK_OPTIONS = ['V', 'L', 'LL', 'A', 'O', 'M', 'ML'];
+
+  /** 幫每一列出缺勤掛上「編輯」互動：改標記、遇到對應補課登記時詢問是否一併刪除 */
+  function wireAttendanceEdit(body, v, memberDbId) {
+    function bindEditBtn(tr) {
+      const btn = tr.querySelector('.btn-edit-att');
+      btn?.addEventListener('click', () => enterEditMode(tr));
+    }
+
+    function enterEditMode(tr) {
+      const markCell    = tr.querySelector('.cell-mark');
+      const actionsCell = tr.querySelector('.cell-actions');
+      const currentMark = markCell.dataset.mark || '';
+
+      markCell.innerHTML = `
+        <select class="sel-edit-mark buke-select" style="font-size:13px;padding:4px 6px;min-height:30px">
+          ${MARK_OPTIONS.map(m => `<option value="${m}"${m === currentMark ? ' selected' : ''}>${m}（${MARK_LABEL[m]}）</option>`).join('')}
+        </select>`;
+      actionsCell.innerHTML = `
+        <button class="buke-btn btn-save-att" style="font-size:12px;padding:3px 10px;min-height:28px">儲存</button>
+        <button class="buke-btn buke-btn-ghost btn-cancel-att" style="font-size:12px;padding:3px 10px;min-height:28px">取消</button>
+        <div class="att-edit-msg" style="font-size:13px;margin-top:6px"></div>`;
+
+      actionsCell.querySelector('.btn-cancel-att').addEventListener('click', () => exitEditMode(tr));
+      actionsCell.querySelector('.btn-save-att').addEventListener('click', () => confirmAndSave(tr));
+    }
+
+    function exitEditMode(tr) {
+      const a = (v.attendance || []).find(x => String(x.id) === tr.dataset.attendanceId);
+      const markCell    = tr.querySelector('.cell-mark');
+      const actionsCell = tr.querySelector('.cell-actions');
+      markCell.dataset.mark = a?.mark || '';
+      markCell.textContent  = MARK_LABEL[a?.mark] || a?.mark || '—';
+      actionsCell.innerHTML = `<button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>`;
+      bindEditBtn(tr);
+    }
+
+    function confirmAndSave(tr) {
+      const newMark    = tr.querySelector('.sel-edit-mark').value;
+      const sessionId  = tr.dataset.sessionId;
+      const matched    = (v.makeups || []).find(mk => String(mk.session_ref) === sessionId);
+      const msgEl      = tr.querySelector('.att-edit-msg');
+
+      if (matched) {
+        msgEl.innerHTML = `
+          <div style="padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md)">
+            這堂課已有登記補課，是否一併刪除補課登記？
+            <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+              <button class="buke-btn btn-confirm-yes" style="font-size:12px;padding:3px 10px;min-height:28px">是，一併刪除</button>
+              <button class="buke-btn buke-btn-ghost btn-confirm-no" style="font-size:12px;padding:3px 10px;min-height:28px">否，只改標記</button>
+              <button class="buke-btn buke-btn-ghost btn-confirm-cancel" style="font-size:12px;padding:3px 10px;min-height:28px">取消整個編輯</button>
+            </div>
+          </div>`;
+        msgEl.querySelector('.btn-confirm-yes').addEventListener('click', () => doSave(tr, newMark, true));
+        msgEl.querySelector('.btn-confirm-no').addEventListener('click', () => doSave(tr, newMark, false));
+        msgEl.querySelector('.btn-confirm-cancel').addEventListener('click', () => exitEditMode(tr));
+      } else {
+        doSave(tr, newMark, false);
+      }
+    }
+
+    async function doSave(tr, newMark, deleteMakeup) {
+      const attendanceId = Number(tr.dataset.attendanceId);
+      const msgEl = tr.querySelector('.att-edit-msg');
+      if (msgEl) msgEl.innerHTML = '<span style="color:var(--muted)">儲存中…</span>';
+      try {
+        const { error } = await _sb.rpc('admin_edit_attendance_mark', {
+          p_attendance_id: attendanceId,
+          p_new_mark: newMark,
+          p_delete_makeup: deleteMakeup,
+        });
+        if (error) throw new Error(error.message);
+        await loadAndRenderDetail(memberDbId, body);
+      } catch (e) {
+        if (msgEl) msgEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+      }
+    }
+
+    body.querySelectorAll('tr[data-attendance-id]').forEach(bindEditBtn);
+  }
 
   function renderStudentDetail(v) {
     const attendance = v.attendance || [];
@@ -201,13 +287,16 @@
 
     const attRows = attendance.length
       ? attendance.map(a => `
-        <tr style="border-bottom:1px solid var(--line)">
+        <tr style="border-bottom:1px solid var(--line)" data-attendance-id="${a.id}" data-session-id="${a.session_id}">
           <td style="padding:6px 10px">${a.date}</td>
           <td style="padding:6px 10px;text-align:center">${a.week_num ?? '—'}</td>
-          <td style="padding:6px 10px">${MARK_LABEL[a.mark] || a.mark || '—'}</td>
+          <td class="cell-mark" style="padding:6px 10px" data-mark="${a.mark || ''}">${MARK_LABEL[a.mark] || a.mark || '—'}</td>
           <td style="padding:6px 10px;color:var(--muted);font-size:13px">${a.source || ''}</td>
+          <td class="cell-actions" style="padding:6px 10px">
+            <button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>
+          </td>
         </tr>`).join('')
-      : `<tr><td colspan="4" style="padding:10px;color:var(--muted)">尚無出缺勤紀錄</td></tr>`;
+      : `<tr><td colspan="5" style="padding:10px;color:var(--muted)">尚無出缺勤紀錄</td></tr>`;
 
     const makeupRows = makeups.length
       ? makeups.map(mk => `
@@ -233,6 +322,7 @@
               <th style="text-align:center;padding:6px 10px">第幾堂</th>
               <th style="text-align:left;padding:6px 10px">標記</th>
               <th style="text-align:left;padding:6px 10px">來源</th>
+              <th style="text-align:left;padding:6px 10px">操作</th>
             </tr>
           </thead>
           <tbody>${attRows}</tbody>
