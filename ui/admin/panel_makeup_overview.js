@@ -293,8 +293,14 @@
       inlineConfirm(card, `確定將 ${r._name} 的補課（${r._date}）標為完成？`, async () => { await completeMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-uncomplete')?.addEventListener('click', () =>
       inlineConfirm(card, `確定取消 ${r._name} 的補課完成？attendance 將還原（ML→LL / M→O）`, async () => { await uncompleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
-    card.querySelector('.btn-del-mu').addEventListener('click', () =>
-      inlineConfirm(card, `確定刪除 ${r._name} 這筆補課登記？`, async () => { await deleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
+    card.querySelector('.btn-del-mu').addEventListener('click', () => {
+      const msg = r.status === '已完成'
+        ? `⚠️ ${r._name} 這筆補課已標記「完成」。直接刪除只會移除這筆登記，<b>不會</b>自動把
+           出勤紀錄改回請假/缺席（ML→LL／M→O），會留下對不起來的紀錄（過去發生過）。
+           建議先按「取消完成」讓出勤還原，再視情況刪除。確定還是要直接刪除嗎？`
+        : `確定刪除 ${r._name} 這筆補課登記？`;
+      inlineConfirm(card, msg, async () => { await deleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); });
+    });
     card.querySelector('.btn-edit-mu').addEventListener('click', () => toggleEditMakeup(card, r));
     card.querySelectorAll('.btn-del-att').forEach(btn => {
       btn.addEventListener('click', () =>
