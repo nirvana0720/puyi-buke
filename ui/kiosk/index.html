@@ -20,19 +20,37 @@
       color: var(--header);
       margin-bottom: 10px;
     }
-    .toggle-btn {
-      width: 100%;
-      text-align: left;
+    .kiosk-regtabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 0;
+    }
+    .kiosk-regtab {
+      flex: 1;
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: var(--r);
-      padding: 10px 14px;
-      font-size: 15px;
+      border-radius: var(--r-md) var(--r-md) 0 0;
+      padding: 14px 10px;
+      font-size: 16px;
       font-weight: 500;
-      color: var(--header);
+      color: var(--muted);
       cursor: pointer;
-      margin-bottom: 6px;
       font-family: inherit;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .kiosk-regtab.active {
+      background: var(--header);
+      color: var(--header-tx);
+      border-color: var(--header);
+    }
+    .kiosk-regpanel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: none;
+      border-radius: 0 0 var(--r-md) var(--r-md);
+      padding: 16px;
+      margin-bottom: 14px;
     }
     #login-section {
       max-width: 360px;
@@ -132,58 +150,47 @@
       <div id="kiosk-training-makeups"></div>
     </div>
 
-    <!-- 現場登記補課 -->
-    <button class="toggle-btn" data-toggle-panel="panel-mk-register" data-label="現場登記補課 / 其他日預約">
-      ▼ 現場登記補課 / 其他日預約
-    </button>
-    <div id="panel-mk-register" style="display:none;margin-bottom:14px">
-      <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
-        <form id="mk-lookup-form" style="display:flex;gap:8px;align-items:center">
-          <input type="text" name="member_code" id="mk-lookup-input" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
-                 maxlength="30">
-          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
-        </form>
-        <div id="mk-lookup-suggest" style="margin-top:6px"></div>
-        <div id="mk-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
-        <div id="mk-lookup-result"></div>
-      </div>
+    <!-- 現場登記／預約：分頁式，同時只會開一個，選中的整塊變深棗紅色 -->
+    <div class="kiosk-regtabs">
+      <button class="kiosk-regtab" data-tab-panel="panel-mk-register">現場登記補課 / 其他日預約</button>
+      <button class="kiosk-regtab" data-tab-panel="panel-training-register">現場登記培訓補課</button>
+      <button class="kiosk-regtab" data-tab-panel="panel-tr-register">現場登記日↔夜間調班補課</button>
     </div>
 
-    <!-- 現場登記培訓補課 -->
-    <button class="toggle-btn" data-toggle-panel="panel-training-register" data-label="現場登記培訓補課">
-      ▼ 現場登記培訓補課
-    </button>
-    <div id="panel-training-register" style="display:none;margin-bottom:14px">
-      <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
-        <form id="training-lookup-form" style="display:flex;gap:8px;align-items:center">
-          <input type="text" name="member_code" id="training-lookup-input" class="buke-input" style="flex:1"
-                 placeholder="例：000012345 或 王小明" maxlength="30">
-          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
-        </form>
-        <div id="training-lookup-suggest" style="margin-top:6px"></div>
-        <div id="training-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
-        <div id="training-lookup-result"></div>
-      </div>
+    <div id="panel-mk-register" class="kiosk-regpanel" style="display:none">
+      <div style="font-size:15px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
+      <form id="mk-lookup-form" style="display:flex;gap:8px;align-items:center">
+        <input type="text" name="member_code" id="mk-lookup-input" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
+               maxlength="30">
+        <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+      </form>
+      <div id="mk-lookup-suggest" style="margin-top:6px"></div>
+      <div id="mk-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+      <div id="mk-lookup-result"></div>
     </div>
 
-    <!-- 現場登記日↔夜間調班補課 -->
-    <button class="toggle-btn" data-toggle-panel="panel-tr-register" data-label="現場登記日↔夜間調班補課">
-      ▼ 現場登記日↔夜間調班補課
-    </button>
-    <div id="panel-tr-register" style="display:none;margin-bottom:14px">
-      <div class="kiosk-section" style="margin-bottom:0">
-        <div style="font-size:14px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
-        <form id="tr-lookup-form" style="display:flex;gap:8px;align-items:center">
-          <input type="text" name="member_code" id="tr-lookup-input" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
-                 maxlength="30">
-          <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
-        </form>
-        <div id="tr-lookup-suggest" style="margin-top:6px"></div>
-        <div id="tr-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
-        <div id="tr-lookup-result"></div>
-      </div>
+    <div id="panel-training-register" class="kiosk-regpanel" style="display:none">
+      <div style="font-size:15px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
+      <form id="training-lookup-form" style="display:flex;gap:8px;align-items:center">
+        <input type="text" name="member_code" id="training-lookup-input" class="buke-input" style="flex:1"
+               placeholder="例：000012345 或 王小明" maxlength="30">
+        <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+      </form>
+      <div id="training-lookup-suggest" style="margin-top:6px"></div>
+      <div id="training-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+      <div id="training-lookup-result"></div>
+    </div>
+
+    <div id="panel-tr-register" class="kiosk-regpanel" style="display:none">
+      <div style="font-size:15px;margin-bottom:8px">輸入學員 9 碼編號，或直接輸入姓名查詢</div>
+      <form id="tr-lookup-form" style="display:flex;gap:8px;align-items:center">
+        <input type="text" name="member_code" id="tr-lookup-input" class="buke-input" style="flex:1" placeholder="例：000012345 或 王小明"
+               maxlength="30">
+        <button type="submit" class="buke-btn" style="flex-shrink:0;padding:8px 14px">查詢</button>
+      </form>
+      <div id="tr-lookup-suggest" style="margin-top:6px"></div>
+      <div id="tr-lookup-msg" style="font-size:13px;margin-top:6px;min-height:18px"></div>
+      <div id="tr-lookup-result"></div>
     </div>
 
   </div><!-- /.buke-wrap -->

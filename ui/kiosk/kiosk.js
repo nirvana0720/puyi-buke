@@ -476,13 +476,16 @@ function todayStr() {
     });
   }
 
-  // ── 展開/收合現場登記區塊 ────────────────────────────────────
-  document.querySelectorAll('[data-toggle-panel]').forEach(btn => {
+  // ── 現場登記／預約分頁切換（同時只開一個，選中變深色） ──────────
+  document.querySelectorAll('[data-tab-panel]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const panel = document.getElementById(btn.dataset.togglePanel);
-      const open  = panel.style.display === 'none' || !panel.style.display;
-      panel.style.display = open ? 'block' : 'none';
-      btn.textContent = (open ? '▲ ' : '▼ ') + btn.dataset.label;
+      const alreadyActive = btn.classList.contains('active');
+      document.querySelectorAll('[data-tab-panel]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.kiosk-regpanel').forEach(p => { p.style.display = 'none'; });
+      if (!alreadyActive) {
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tabPanel).style.display = 'block';
+      }
     });
   });
 })();
