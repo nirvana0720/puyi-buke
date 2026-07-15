@@ -259,7 +259,16 @@ function todayStr() {
     } catch (_) {}
     try {
       const regs = await kioskGetTodayRegistrations(sb, staff.staff_id);
-      window.KioskAlerts.renderTodayRegistrations(regs);
+      window.KioskAlerts.renderTodayRegistrations(regs, {
+        onCancelMakeup: async (makeupId) => {
+          await kioskCancelMakeup(sb, staff.staff_id, makeupId);
+          await loadAlertsAndRegistrations();
+        },
+        onCancelTransfer: async (transferId) => {
+          await kioskCancelTransfer(sb, staff.staff_id, transferId);
+          await loadAlertsAndRegistrations();
+        },
+      });
     } catch (_) {}
   }
 

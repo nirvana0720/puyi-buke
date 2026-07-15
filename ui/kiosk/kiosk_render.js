@@ -31,7 +31,7 @@ function renderTransfers(transfers, callbacks) {
         ${canAttend ? `<button class="buke-btn" data-attend-transfer="${i}" style="font-size:13px;padding:5px 12px">出席</button>` : ''}
         <button class="buke-btn buke-btn-ghost" data-edit-transfer="${i}" style="font-size:13px;padding:5px 12px">編輯備註</button>
         ${canReset ? `<button class="buke-btn buke-btn-ghost" data-reset-transfer="${i}" style="font-size:13px;padding:5px 12px">重設為已登記</button>` : ''}
-        ${canCancel ? `<button class="buke-btn buke-btn-danger" data-cancel-transfer="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
+        ${canCancel ? `<button class="buke-btn buke-btn-ghost" data-cancel-transfer="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
         <span id="tr-attend-msg-${i}" style="font-size:13px"></span>
       </div>
       <div class="tr-edit-area" id="tr-edit-${i}"></div>
@@ -169,7 +169,7 @@ function renderMakeups(makeups, callbacks) {
         ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-makeup="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
         ${openHint}
         <button class="buke-btn" data-notdone-makeup="${i}"
-                style="font-size:13px;padding:5px 12px;background:var(--warn-bar);border-color:var(--warn-bar)"${disNext}>
+                style="font-size:13px;padding:5px 12px;background:var(--warn-tx);border-color:var(--warn-tx)"${disNext}>
           此堂課尚未補完
         </button>
         <button class="buke-btn" data-complete-makeup="${i}"
@@ -179,7 +179,7 @@ function renderMakeups(makeups, callbacks) {
         <button class="buke-btn buke-btn-ghost" data-edit-makeup="${i}" style="font-size:13px;padding:5px 12px">
           編輯
         </button>
-        ${canCancelReg ? `<button class="buke-btn buke-btn-danger" data-cancelreg-makeup="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
+        ${canCancelReg ? `<button class="buke-btn buke-btn-ghost" data-cancelreg-makeup="${i}" style="font-size:13px;padding:5px 12px">取消登記</button>` : ''}
         <span id="mk-msg-${i}" style="font-size:13px"></span>
       </div>
       <div class="mk-edit-area" id="mk-edit-${i}"></div>
