@@ -25,10 +25,19 @@ async function kioskTransferAttend(sb, staffId, transferId) {
   return data;
 }
 
-async function kioskMakeupAttend(sb, staffId, makeupId) {
-  const { data, error } = await sb.rpc('kiosk_makeup_attend', { p_staff_id: staffId, p_makeup_id: makeupId });
+async function kioskMakeupAttend(sb, staffId, makeupId, machineNumber) {
+  const { data, error } = await sb.rpc('kiosk_makeup_attend', {
+    p_staff_id: staffId, p_makeup_id: makeupId, p_machine_number: machineNumber ?? null,
+  });
   if (error) throw new Error(error.message);
   return data;
+}
+
+// 依「今日到場記錄」推算目前使用中的機台（departed_at 未填＋有選機台）
+function computeMachineStatus(records) {
+  return (records || [])
+    .filter(r => !r.departed_at && r.machine_number != null)
+    .map(r => ({ machine_number: r.machine_number, member_name: r.member_name }));
 }
 
 async function kioskMakeupComplete(sb, staffId, makeupId) {
@@ -243,11 +252,13 @@ function todayStr() {
   // ── 日期切換 ─────────────────────────────────────────────────
   datePicker.addEventListener('change', () => loadDay(datePicker.value));
 
-  // ── 今日到場記錄 ──────────────────────────────────────────────
-  async function loadTodayLog() {
+  // ── 今日到場記錄＋機台使用狀況 ────────────────────────────────
+  // 重新抓「今日到場記錄」，同時更新到場記錄表格與各卡片機台下拉選單的「使用中」提示
+  async function refreshTodayLogAndMachines() {
     try {
       const records = await kioskGetTodayLog(sb, staff.staff_id);
       KioskRender.renderTodayLog(records);
+      KioskRender.updateMachineOptions(computeMachineStatus(records));
     } catch (_) {}
   }
 
@@ -278,12 +289,16 @@ function todayStr() {
     document.getElementById('kiosk-makeups').innerHTML           = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
     document.getElementById('kiosk-training-makeups').innerHTML  = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
     try {
-      const day = await kioskGetDay(sb, staff.staff_id, date);
+      const [day, todayLogRecords] = await Promise.all([
+        kioskGetDay(sb, staff.staff_id, date),
+        kioskGetTodayLog(sb, staff.staff_id),
+      ]);
       const today = todayStr();
       const makeups = (day.makeups || []).map(m => ({
         ...m,
         is_overdue: m.deadline_date != null && today > m.deadline_date,
       }));
+      const machineStatus = computeMachineStatus(todayLogRecords);
       renderTransfers(day.transfers, {
         onAttend: async (transferId) => {
           await kioskTransferAttend(sb, staff.staff_id, transferId);
@@ -302,14 +317,17 @@ function todayStr() {
         },
       });
       renderMakeups(makeups, {
-        onAttend: async (makeupId) => { await kioskMakeupAttend(sb, staff.staff_id, makeupId); },
+        onAttend: async (makeupId, machineNumber) => {
+          await kioskMakeupAttend(sb, staff.staff_id, makeupId, machineNumber);
+          await refreshTodayLogAndMachines();
+        },
         onDepart: async (makeupId) => {
           await kioskMakeupDepart(sb, staff.staff_id, makeupId);
-          await loadTodayLog();
+          await refreshTodayLogAndMachines();
         },
         onComplete: async (makeupId) => {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
-          await loadTodayLog();
+          await refreshTodayLogAndMachines();
         },
         onEdit: async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
           await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
@@ -318,16 +336,17 @@ function todayStr() {
         lookupMember: async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode),
         onCancelAttend: async (makeupId) => {
           await kioskMakeupCancelAttend(sb, staff.staff_id, makeupId);
+          await refreshTodayLogAndMachines();
         },
         onCancelReg: async (makeupId) => {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
         },
-      });
+      }, machineStatus);
       renderTrainingMakeupsToday(
         day.training_makeups || [],
         async (id) => { await kioskTrainingMakeupComplete(sb, staff.staff_id, id); }
       );
-      await loadTodayLog();
+      KioskRender.renderTodayLog(todayLogRecords);
       await loadAlertsAndRegistrations();
     } catch (err) {
       document.getElementById('kiosk-transfers').innerHTML =

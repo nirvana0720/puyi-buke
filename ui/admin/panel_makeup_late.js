@@ -163,7 +163,7 @@
     let attMap = new Map(), allAttMap = new Map();
     if (muIds.length) {
       const { data: attRows } = await _sb.from('makeup_attendances')
-        .select('makeup_ref,attended_at,departed_at,late_mark')
+        .select('makeup_ref,attended_at,departed_at,late_mark,machine_number')
         .in('makeup_ref', muIds)
         .order('attended_at', { ascending: false });
       (attRows || []).forEach(a => {

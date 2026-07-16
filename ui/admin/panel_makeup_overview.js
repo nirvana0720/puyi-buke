@@ -23,7 +23,7 @@
     let allAttMap = new Map(); // makeup_ref → 所有紀錄[]，由舊到新
     if (muIds.length) {
       const { data: attRows, error: attErr } = await _sb.from('makeup_attendances')
-        .select('id,makeup_ref,attended_at,departed_at,late_mark')
+        .select('id,makeup_ref,attended_at,departed_at,late_mark,machine_number')
         .in('makeup_ref', muIds)
         .order('attended_at', { ascending: false });
       if (attErr) throw new Error(`補課出席紀錄：${attErr.message}`);
@@ -272,7 +272,7 @@
           <div style="margin-top:4px">
             ${r._att_records.map((a, idx) =>
               `<div style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px">
-                 <span>第 ${idx+1} 次到場：${new Date(a.attended_at).toLocaleString('zh-TW',{hour12:false})}${a.departed_at ? ` → 離場 ${new Date(a.departed_at).toLocaleString('zh-TW',{hour12:false})}（${Math.round((new Date(a.departed_at)-new Date(a.attended_at))/60000)} 分）` : ''}${a.late_mark ? `　遲到：${a.late_mark}` : ''}</span>
+                 <span>第 ${idx+1} 次到場：${new Date(a.attended_at).toLocaleString('zh-TW',{hour12:false})}${a.departed_at ? ` → 離場 ${new Date(a.departed_at).toLocaleString('zh-TW',{hour12:false})}（${Math.round((new Date(a.departed_at)-new Date(a.attended_at))/60000)} 分）` : ''}${a.late_mark ? `　遲到：${a.late_mark}` : ''}${a.machine_number ? `　🖥️${a.machine_number}號機` : ''}</span>
                  <button class="buke-btn buke-btn-ghost btn-del-att" data-att-id="${a.id}" style="font-size:12px;padding:1px 8px;min-height:22px">刪除此筆到場</button>
                </div>`
             ).join('')}

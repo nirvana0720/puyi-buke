@@ -131,9 +131,39 @@ function toggleEditTransferNoteForm(i, t, onEditNote) {
   });
 }
 
+// ── 機台號碼下拉選單（影音補課出席登記用；機台數來自 CONFIG.VIDEO_MACHINE_COUNT）──
+// machineStatus = [{machine_number, member_name}]（目前使用中的機台）
+function buildMachineOptions(machineStatus) {
+  const busyMap = new Map((machineStatus || []).map(s => [s.machine_number, s.member_name]));
+  const count = (typeof CONFIG !== 'undefined' && CONFIG.VIDEO_MACHINE_COUNT) || 0;
+  let opts = '<option value="">請選擇機台</option>';
+  for (let n = 1; n <= count; n++) {
+    const busyName = busyMap.get(n);
+    opts += `<option value="${n}">${n} 號機${busyName ? `（使用中：${busyName}）` : ''}</option>`;
+  }
+  return opts;
+}
+
+// 出席／取消到場／結案後，依最新機台使用狀況更新畫面上所有機台下拉選單的顯示文字
+// （不重新整理整個清單，只換 option 文字，避免其他卡片操作被打斷）
+function updateMachineOptions(machineStatus) {
+  const busyMap = new Map((machineStatus || []).map(s => [s.machine_number, s.member_name]));
+  document.querySelectorAll('.mk-machine-select').forEach(sel => {
+    const kept = sel.value;
+    Array.from(sel.options).forEach(opt => {
+      const n = Number(opt.value);
+      if (!n) return;
+      const busyName = busyMap.get(n);
+      opt.textContent = `${n} 號機${busyName ? `（使用中：${busyName}）` : ''}`;
+    });
+    sel.value = kept;
+  });
+}
+
 // ── 今日補課清單 ──────────────────────────────────────────────────
 // callbacks = {onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg}
-function renderMakeups(makeups, callbacks) {
+// machineStatus = [{machine_number, member_name}]（今天目前使用中的機台，供下拉選單提示）
+function renderMakeups(makeups, callbacks, machineStatus) {
   const { onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg } = callbacks || {};
   const el = document.getElementById('kiosk-makeups');
   if (!el) return;
@@ -165,6 +195,7 @@ function renderMakeups(makeups, callbacks) {
       </div>
       <div class="detail">缺課日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="buke-select mk-machine-select" data-machine-select="${i}" style="font-size:13px;padding:4px 8px;min-height:30px;width:auto">${buildMachineOptions(machineStatus)}</select>
         <button class="buke-btn" data-attend-makeup="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>出席</button>
         ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-makeup="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
         ${openHint}
@@ -190,9 +221,11 @@ function renderMakeups(makeups, callbacks) {
     btn.addEventListener('click', async () => {
       const i = Number(btn.dataset.attendMakeup);
       const msg = document.getElementById(`mk-msg-${i}`);
+      const machineSel = el.querySelector(`[data-machine-select="${i}"]`);
+      const machineNumber = machineSel && machineSel.value ? Number(machineSel.value) : null;
       btn.disabled = true; msg.textContent = '記錄中…';
       try {
-        await onAttend(makeups[i].makeup_id);
+        await onAttend(makeups[i].makeup_id, machineNumber);
         msg.textContent = '✅ 已記錄出席'; msg.style.color = 'var(--ok-tx)';
         const card = btn.closest('.buke-card');
         card.querySelector('[data-notdone-makeup]')?.removeAttribute('disabled');
@@ -726,6 +759,7 @@ function renderTodayLog(records) {
       <th style="padding:8px">姓名</th><th style="padding:8px">班別</th>
       <th style="padding:8px">缺課日</th><th style="padding:8px">到場</th>
       <th style="padding:8px">離場</th><th style="padding:8px">時長</th>
+      <th style="padding:8px">機台</th>
       <th style="padding:8px">狀態</th>
     </tr></thead>
     <tbody>
@@ -736,6 +770,7 @@ function renderTodayLog(records) {
         <td style="padding:8px">${timeStr(r.attended_at)}</td>
         <td style="padding:8px">${timeStr(r.departed_at)}</td>
         <td style="padding:8px">${durStr(r.attended_at, r.departed_at)}</td>
+        <td style="padding:8px;color:var(--muted)">${r.machine_number ? `🖥️${r.machine_number}號機` : '—'}</td>
         <td style="padding:8px;color:${r.status==='已完成'?'var(--ok-tx)':'var(--warn-tx)'}">${r.status==='已完成'?'✅ 補完':'⏳ 尚未補完'}</td>
       </tr>`).join('')}
     </tbody>
@@ -743,5 +778,5 @@ function renderTodayLog(records) {
 }
 
 if (typeof window !== 'undefined') {
-  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog };
+  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions };
 }
