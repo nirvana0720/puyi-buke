@@ -100,6 +100,7 @@
     const notice     = row.makeup_notice || '';
     const deadlineDays = row.makeup_deadline_days ?? 40;
     const warnOn     = (row.extra_json?.warn_out_of_range) !== false; // 預設 true
+    const machineCount = row.video_machine_count ?? 5;
 
     container.innerHTML = `
       <!-- §1 可開始補課日期 -->
@@ -178,6 +179,17 @@
           <input type="checkbox" id="chk-warn" ${warnOn ? 'checked' : ''}
                  style="width:20px;height:20px;flex-shrink:0;cursor:pointer">
           <span>學員登記補課若超出上方規定範圍，顯示提醒</span>
+        </label>
+      </div>
+
+      <!-- 影音補課機台數量 -->
+      <div class="buke-card" style="margin-bottom:16px">
+        <div class="name" style="font-size:16px;font-weight:500;margin-bottom:10px">影音補課機台數量</div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:15px">
+          共
+          <input type="number" id="inp-machine-count" min="1" value="${machineCount}"
+                 class="buke-input" style="width:80px;font-size:15px;padding:4px 8px;min-height:32px">
+          台機器（義工櫃台登記出席時的機台下拉選單依此數量顯示）
         </label>
       </div>
 
@@ -295,6 +307,7 @@
       const nDays    = Number(container.querySelector('#inp-days').value) || 7;
       const notice   = container.querySelector('#inp-notice').value;
       const warnFlag = container.querySelector('#chk-warn').checked;
+      const machineCountVal = Number(container.querySelector('#inp-machine-count').value) || (row.video_machine_count ?? 5);
       const prevJson = row.extra_json || {};
 
       const fields = {
@@ -303,6 +316,7 @@
         makeup_time_slots:    slots.length ? slots : null,
         makeup_blackout_dates: blackoutDates.length ? blackoutDates : null,
         makeup_notice:        notice.trim() || null,
+        video_machine_count:  machineCountVal,
         extra_json:           { ...prevJson, warn_out_of_range: warnFlag },
       };
 

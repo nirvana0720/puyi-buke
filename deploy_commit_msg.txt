@@ -1,5 +1,13 @@
-2026-07-16 重構48現場電腦排程同步、重構49機台號碼登記、綁定zenclass真代碼防呆修正、匯入編碼修復
+2026-07-16 重構48現場電腦排程同步、重構49機台號碼登記、重構50機台數量改系統設定、
+綁定zenclass真代碼防呆修正、匯入編碼修復
 
+- 重構50：影音補課機台數量從config.js寫死改成後台「補課規定設定」頁面可調整
+  （每家精舍機器台數不同，換分院不用再改程式碼重新部署）
+  db/重構50_機台數量改系統設定.sql（settings表加video_machine_count欄位）、
+  db/rpc_06_kiosk.sql（kiosk_get_day回傳加video_machine_count）、
+  ui/admin/panel_makeup_rules.js（新增設定區塊）、
+  ui/kiosk/kiosk_render.js、ui/kiosk/kiosk.js（機台數量改吃這個值，
+  config.js的VIDEO_MACHINE_COUNT保留當備援預設值）
 - 重構49：義工櫃台補課登記加「機台號碼」欄位（出席時選機台，下拉選單顯示
   使用中機台與占用者，機台數可於 config/config.js 的 VIDEO_MACHINE_COUNT 設定）
   db/重構49_影補登記機台號碼.sql、db/rpc_06_kiosk.sql、db/grant_rpc.sql、

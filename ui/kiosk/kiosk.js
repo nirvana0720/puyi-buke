@@ -299,6 +299,7 @@ function todayStr() {
         is_overdue: m.deadline_date != null && today > m.deadline_date,
       }));
       const machineStatus = computeMachineStatus(todayLogRecords);
+      const machineCount = day.video_machine_count ?? (CONFIG.VIDEO_MACHINE_COUNT || 5);
       renderTransfers(day.transfers, {
         onAttend: async (transferId) => {
           await kioskTransferAttend(sb, staff.staff_id, transferId);
@@ -341,7 +342,7 @@ function todayStr() {
         onCancelReg: async (makeupId) => {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
         },
-      }, machineStatus);
+      }, machineStatus, machineCount);
       renderTrainingMakeupsToday(
         day.training_makeups || [],
         async (id) => { await kioskTrainingMakeupComplete(sb, staff.staff_id, id); }

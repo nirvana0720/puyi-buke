@@ -131,11 +131,11 @@ function toggleEditTransferNoteForm(i, t, onEditNote) {
   });
 }
 
-// ── 機台號碼下拉選單（影音補課出席登記用；機台數來自 CONFIG.VIDEO_MACHINE_COUNT）──
+// ── 機台號碼下拉選單（影音補課出席登記用；機台數由呼叫端傳入，來源為 settings.video_machine_count）──
 // machineStatus = [{machine_number, member_name}]（目前使用中的機台）
-function buildMachineOptions(machineStatus) {
+function buildMachineOptions(machineStatus, machineCount) {
   const busyMap = new Map((machineStatus || []).map(s => [s.machine_number, s.member_name]));
-  const count = (typeof CONFIG !== 'undefined' && CONFIG.VIDEO_MACHINE_COUNT) || 0;
+  const count = machineCount || 0;
   let opts = '<option value="">請選擇機台</option>';
   for (let n = 1; n <= count; n++) {
     const busyName = busyMap.get(n);
@@ -163,7 +163,8 @@ function updateMachineOptions(machineStatus) {
 // ── 今日補課清單 ──────────────────────────────────────────────────
 // callbacks = {onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg}
 // machineStatus = [{machine_number, member_name}]（今天目前使用中的機台，供下拉選單提示）
-function renderMakeups(makeups, callbacks, machineStatus) {
+// machineCount = 機台總數（來自 settings.video_machine_count，見 kiosk.js）
+function renderMakeups(makeups, callbacks, machineStatus, machineCount) {
   const { onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg } = callbacks || {};
   const el = document.getElementById('kiosk-makeups');
   if (!el) return;
@@ -195,7 +196,7 @@ function renderMakeups(makeups, callbacks, machineStatus) {
       </div>
       <div class="detail">缺課日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select class="buke-select mk-machine-select" data-machine-select="${i}" style="font-size:13px;padding:4px 8px;min-height:30px;width:auto">${buildMachineOptions(machineStatus)}</select>
+        <select class="buke-select mk-machine-select" data-machine-select="${i}" style="font-size:13px;padding:4px 8px;min-height:30px;width:auto">${buildMachineOptions(machineStatus, machineCount)}</select>
         <button class="buke-btn" data-attend-makeup="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>出席</button>
         ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-makeup="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
         ${openHint}
