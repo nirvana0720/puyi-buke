@@ -1,5 +1,14 @@
-2026-07-16 重構48現場電腦排程同步、綁定zenclass真代碼防呆修正、匯入編碼修復
+2026-07-16 重構48現場電腦排程同步、重構49機台號碼登記、綁定zenclass真代碼防呆修正、匯入編碼修復
 
+- 重構49：義工櫃台補課登記加「機台號碼」欄位（出席時選機台，下拉選單顯示
+  使用中機台與占用者，機台數可於 config/config.js 的 VIDEO_MACHINE_COUNT 設定）
+  db/重構49_影補登記機台號碼.sql、db/rpc_06_kiosk.sql、db/grant_rpc.sql、
+  config/config.js、ui/kiosk/kiosk_render.js、ui/kiosk/kiosk.js、
+  ui/admin/panel_makeup_overview.js、ui/admin/panel_makeup_late.js
+- 修正 db/rpc_06_kiosk.sql 的 kiosk_get_day：makeups 陣列補回 member_id
+  欄位（原本只回 member_name，義工櫃台編輯補課表單的「缺課堂次」下拉選單
+  靠 member_id 查詢缺課清單，缺這欄位導致每次編輯都「載入失敗」，
+  這是舊有問題，測機台號碼功能時才發現）
 - 修正 ui/admin/panel_import.js：匯入名冊改用 readAsArrayBuffer+{type:'array'}
   取代 readAsBinaryString+{type:'binary'}，避免中文姓名/法號被雙重UTF-8編碼
   壞掉（2026-07-02匯入的147筆姓名/法號因此變亂碼，已於資料庫端修復並備份，
