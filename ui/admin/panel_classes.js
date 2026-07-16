@@ -166,10 +166,19 @@
 
   const ZENCLASS_SCAN_RANGE = 20; // 掃描錨點前後範圍（可調整，不寫死在函式內部）
 
-  /** 從一組班別中找出「已經是真代碼」的第一筆，供掃描法當錨點 */
-  function findAnchorClassId(allClasses) {
-    const real = (allClasses || []).find(c => c.class_id && !c.class_id.startsWith('MANUAL-'));
-    return real ? real.class_id : null;
+  /** 找掃描法的預設錨點：優先找「同系列」的已綁定班（班名去掉日/夜後相同，例如
+   *  「四夜研經班」跟「四日研經班」通常是相鄰真代碼），這樣掃描範圍才會落在正確號段；
+   *  找不到同系列的才退回「隨便一筆已綁定班」（可能號段差很遠，掃不到很正常，
+   *  UI 一律讓使用者可以手動改，不要卡死在這個猜測值）。 */
+  function findAnchorClassId(allClasses, targetName) {
+    const real = (allClasses || []).filter(c => c.class_id && !c.class_id.startsWith('MANUAL-'));
+    if (!real.length) return null;
+    if (targetName) {
+      const stripped = targetName.replace(/[日夜]/g, '');
+      const sameFamily = real.find(c => c.class_name && c.class_name.replace(/[日夜]/g, '') === stripped);
+      if (sameFamily) return sameFamily.class_id;
+    }
+    return real[0].class_id;
   }
 
   /** 把真代碼拆成「前綴」＋「尾碼數字」，供掃描鄰近號碼使用 */
@@ -265,16 +274,15 @@
    *  class_date_infos 降級為可選雙重確認，不是必要路徑（見重構34 2026-07-07 修訂） */
   function renderBindForm(sb, area, cls, onRefresh, allClasses) {
     const today  = new Date().toLocaleDateString('sv-SE');
-    const anchor = findAnchorClassId(allClasses);
+    const anchor = findAnchorClassId(allClasses, cls.class_name);
 
     area.innerHTML = `
       <div style="padding:10px;background:var(--bg);border-radius:var(--r-md)">
         <div style="font-size:14px;margin-bottom:8px">
-          ${anchor
-            ? `掃描錨點（自動抓到同單位真代碼）：<strong>${anchor}</strong>`
-            : '目前沒有任何已知真代碼可當錨點，請手動輸入一個（例如同批建立的其他班代碼）：'}
+          掃描錨點（${anchor ? '自動抓到一筆已知真代碼，' : '目前沒有已知真代碼可自動帶入，'}掃描是以這個代碼為中心往前後找；
+          如果掃不到，代表這班跟錨點不同號段，換一個同系列的班代碼再試）：
         </div>
-        ${!anchor ? `<input class="buke-input f-anchor" placeholder="例：CLS115031900005" style="width:100%;margin-bottom:8px">` : ''}
+        <input class="buke-input f-anchor" placeholder="例：CLS115031900005" value="${anchor || ''}" style="width:100%;margin-bottom:8px">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
           <label style="font-size:13px;color:var(--muted)">查詢日期
             <input type="date" class="buke-input f-binddate" value="${today}" style="width:150px;margin-left:4px">
@@ -292,7 +300,7 @@
     area.querySelector('.btn-query-schedule').addEventListener('click', async () => {
       const dateVal    = area.querySelector('.f-binddate').value;
       const rangeVal   = Number(area.querySelector('.f-scanrange').value) || ZENCLASS_SCAN_RANGE;
-      const anchorVal  = anchor || area.querySelector('.f-anchor')?.value.trim();
+      const anchorVal  = area.querySelector('.f-anchor')?.value.trim();
       const progressEl = area.querySelector('.bind-progress');
       const resultEl   = area.querySelector('.bind-result');
       const msgEl      = area.querySelector('.bind-msg');

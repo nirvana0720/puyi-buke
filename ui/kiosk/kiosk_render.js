@@ -358,6 +358,13 @@ function toggleEditMakeupForm(i, m, onEdit, lookupMember) {
     const h = hourSel.value, mi = minSel.value;
     const plannedSlot = (h && mi) ? `${h}:${mi}` : null;
     const note = area.querySelector('.f-enote').value.trim() || null;
+    // 防呆：有填時段就不能沒填日期，否則這筆補課登記會從「今日補課」清單消失，
+    // 沒人知道要提醒學員（2026-07-15 實測踩到：毛夢飛的登記時段有填但日期是空的）
+    if (plannedSlot && !plannedDate) {
+      msgEl.textContent = '⚠ 已填時段，請一併選擇日期';
+      msgEl.style.color = 'var(--danger-tx)';
+      return;
+    }
     const btn = area.querySelector('.f-esave');
     btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
     try {
