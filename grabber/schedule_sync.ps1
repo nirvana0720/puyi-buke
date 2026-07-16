@@ -7,7 +7,13 @@
 #
 # ⚠️ 設定值需跟 config/config.js 保持一致，換分院部署／重新搬到新電腦時記得一起改。
 # ⚠️ 本檔與 setup_schedule.bat 放在同一個資料夾，換電腦只要複製整個 grabber/ 資料夾，
-#   重新雙擊 setup_schedule.bat 即可重建排程，不用改路徑（都用 $PSScriptRoot 抓自己所在資料夾）。
+#   重新雙擊 setup_schedule.bat 即可重建排程，不用改路徑。
+#   ⚠️ 2026-07-16 現場踩雷修正：不用 $PSScriptRoot（PowerShell 3.0 才有這個自動變數，
+#   有些精舍電腦是舊版 PowerShell／精簡版 Windows，$PSScriptRoot 會是空值，導致
+#   Join-Path/Add-Content 全部炸掉）。改用 $MyInvocation.MyCommand.Path，相容更舊版本。
+#   同理，ConvertTo-Json 這個 cmdlet 在某些精簡版 PowerShell 環境會抓不到
+#   （現場電腦實測過：Add-Content -Path 是 Null、ConvertTo-Json 無法辨識），
+#   所以下面自己刻一個 ConvertTo-JsonCompat，不依賴系統模組是否有載入 ConvertTo-Json。
 
 # ── 0. 設定（比照 config/config.js 現有真實值）───────────────────
 $SUPABASE_URL      = 'https://yiowkvxwvwpzebdriksu.supabase.co'
@@ -15,7 +21,9 @@ $SUPABASE_ANON_KEY = 'sb_publishable_HFFBTwTbvPNGi_WnUssBpQ_ps7PS1Ie'
 $UNIT_ID            = 'UNIT01071'
 $API_BASE           = 'https://zenclass.ctcm.org.tw'
 
-$ScriptDir = $PSScriptRoot
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $ScriptDir) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
+if (-not $ScriptDir) { $ScriptDir = (Get-Location).Path }
 $LogFile   = Join-Path $ScriptDir 'sync_log.txt'
 
 function Write-Log {
@@ -25,6 +33,35 @@ function Write-Log {
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
+# 手刻 JSON 序列化（不依賴 ConvertTo-Json，見上面 2026-07-16 踩雷說明）。
+# 只需要處理本檔會用到的型別：字串／數字／布林／$null／雜湊表（含 [ordered]）／陣列。
+function ConvertTo-JsonCompat {
+    param($InputObject)
+    if ($null -eq $InputObject) { return 'null' }
+    if ($InputObject -is [bool]) { if ($InputObject) { return 'true' } else { return 'false' } }
+    if ($InputObject -is [int] -or $InputObject -is [long] -or $InputObject -is [double]) { return "$InputObject" }
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        $pairs = @()
+        foreach ($key in $InputObject.Keys) {
+            $escKey = ($key -replace '\\','\\\\') -replace '"','\"'
+            $pairs += ('"' + $escKey + '":' + (ConvertTo-JsonCompat $InputObject[$key]))
+        }
+        return '{' + ($pairs -join ',') + '}'
+    }
+    if ($InputObject -is [string]) {
+        $esc = ($InputObject -replace '\\','\\\\') -replace '"','\"'
+        $esc = ($esc -replace "`r",'\r') -replace "`n",'\n' -replace "`t",'\t'
+        return '"' + $esc + '"'
+    }
+    if ($InputObject -is [System.Collections.IEnumerable]) {
+        $items = @()
+        foreach ($item in $InputObject) { $items += (ConvertTo-JsonCompat $item) }
+        return '[' + ($items -join ',') + ']'
+    }
+    $esc = ("$InputObject" -replace '\\','\\\\') -replace '"','\"'
+    return '"' + $esc + '"'
+}
+
 # 呼叫 Supabase PostgREST 的 RPC 端點。JSON body 強制轉成 UTF-8 bytes 再送出，
 # 避免 Windows PowerShell 5.1 在非 UTF-8 系統地區設定下把中文（法號、班名）送成亂碼。
 function Invoke-SupabaseRpc {
@@ -32,7 +69,7 @@ function Invoke-SupabaseRpc {
         [Parameter(Mandatory = $true)][string]$FunctionName,
         [Parameter(Mandatory = $true)]$Body
     )
-    $json = $Body | ConvertTo-Json -Depth 10 -Compress
+    $json = ConvertTo-JsonCompat $Body
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     $headers = @{
         'apikey'        = $SUPABASE_ANON_KEY
@@ -56,7 +93,7 @@ function Write-CronSyncLog {
         $row = @{ class_id = $ClassId; class_name = $ClassName; ok = $Ok }
         if ($null -ne $Synced)   { $row.synced = $Synced }
         if ($ErrorMsg)           { $row.error_msg = $ErrorMsg }
-        $json = $row | ConvertTo-Json -Compress
+        $json = ConvertTo-JsonCompat $row
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
         $headers = @{
             'apikey'        = $SUPABASE_ANON_KEY
@@ -76,6 +113,7 @@ $dowChars = @('日', '一', '二', '三', '四', '五', '六')   # Get-Date 的 
 $dowStr   = $dowChars[[int]$nowTaipei.DayOfWeek]
 
 Write-Log "===== 開始同步 $dateStr（星期$dowStr）====="
+Write-Log "（PowerShell 版本：$($PSVersionTable.PSVersion)，日後排查用）"
 
 # ── 2. 取我方已建檔的班別清單（同 bookmarklet.js 用的 list_audit_classes RPC）──
 try {

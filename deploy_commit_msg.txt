@@ -1,4 +1,9 @@
-2026-07-16 重構48現場電腦排程同步、綁定zenclass真代碼防呆修正
+2026-07-16 重構48現場電腦排程同步、綁定zenclass真代碼防呆修正、匯入編碼修復
+
+- 修正 ui/admin/panel_import.js：匯入名冊改用 readAsArrayBuffer+{type:'array'}
+  取代 readAsBinaryString+{type:'binary'}，避免中文姓名/法號被雙重UTF-8編碼
+  壞掉（2026-07-02匯入的147筆姓名/法號因此變亂碼，已於資料庫端修復並備份，
+  見 db/fix_學員姓名法號雙重編碼亂碼_20260716.sql）
 
 - 後台：綁定zenclass真代碼表單，掃描錨點欄位一律可手動編輯，不再因為自動抓到
   錨點就鎖死（今天四日研經班就是卡在這裡：自動錨點抓到不同號段的班，掃描
@@ -8,6 +13,11 @@
 - 新增 grabber/schedule_sync.ps1、grabber/setup_schedule.bat：現場電腦排程
   同步出缺勤資料，取代Supabase雲端排程（pg_cron/pg_net連不到zenclass，
   DNS解析失敗）與人工點書籤（重構48，取代重構47）
+- 新增 grabber/test_sync_now.bat：一鍵手動測試同步，不用等排程時間到，
+  不用碰PowerShell指令
+- 修正 grabber/schedule_sync.ps1：現場刷卡電腦實測踩雷，改用不依賴
+  $PSScriptRoot／ConvertTo-Json的寫法（某些精舍電腦PowerShell版本較舊
+  或精簡，這兩個抓不到會整支腳本壞掉）
 
 2026-07-15 UI優化、重構46出缺勤編輯工具、補登同步修復、櫃台收合功能
 

@@ -68,13 +68,20 @@
       const reader = new FileReader();
       reader.onload = e => {
         try {
-          const wb    = XLSX.read(e.target.result, { type: 'binary' });
+          // ⚠️ 2026-07-16 踩雷修正：原本用 readAsBinaryString + {type:'binary'}，
+          // 這個組合會讓瀏覽器把檔案位元組跑過一次字串解碼，中文姓名／法號在
+          // 某些情況下會被「雙重 UTF-8 編碼」壞掉存進資料庫（2026-07-02 匯入
+          // 的 147 筆姓名／法號因此變亂碼，事後才發現，見
+          // db/fix_學員姓名法號雙重編碼亂碼_20260716.sql 的修復紀錄）。
+          // 改用 readAsArrayBuffer + {type:'array'}：直接讀原始位元組，不經過
+          // 任何字串解碼，SheetJS 官方文件也建議用這個組合讀檔，才不會有編碼風險。
+          const wb    = XLSX.read(e.target.result, { type: 'array' });
           const sheet = wb.Sheets[wb.SheetNames[0]];
           resolve(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }));
         } catch (err) { reject(new Error(`解析失敗：${err.message}`)); }
       };
       reader.onerror = () => reject(new Error('檔案讀取失敗'));
-      reader.readAsBinaryString(file);
+      reader.readAsArrayBuffer(file);
     });
   }
 
