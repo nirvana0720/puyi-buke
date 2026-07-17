@@ -124,6 +124,12 @@
 
   // ── 日夜補卡片 ────────────────────────────────────────────────
 
+  function formatAttendStatus(r) {
+    if (r.status !== '已出席') return r.status;
+    const map = { '準時': '準時', 'L': '遲到', 'LL': '靜坐遲到', 'A': '晚到' };
+    return map[r.late_mark] || r.late_mark;
+  }
+
   function buildTransferCard(r, container) {
     const card = document.createElement('div');
     const badge = r.status==='已出席' ? '<span class="buke-badge pass">已出席</span>'
@@ -140,7 +146,7 @@
       </div>
       <div class="tr-meta-line" style="font-size:14px;color:var(--muted);margin:6px 0">
         原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
-        ${r.late_mark ? `　出席狀態：${r.late_mark}` : ''}　登記人：${r.registered_by}
+        ${r.late_mark ? `　出席狀態：${formatAttendStatus(r)}` : ''}　登記人：${r.registered_by}
         ${r.note ? `　備註：${r.note}` : ''}
       </div>
       <div class="tr-ctis-row" style="margin:6px 0">
@@ -158,7 +164,7 @@
       </div>
       <div class="edit-area"></div>
       <div class="tr-print-rec">
-        <div class="tr-print-line1">${r._name}　${r._group}　${r.status}　${ctisText}</div>
+        <div class="tr-print-line1">${r._name}　${r._group}　出席狀態：${formatAttendStatus(r)}　${ctisText}</div>
         <div class="tr-print-line2">${r._class_name}／${r._from_date} → ${r._to_class}／${r.to_date}、登記人：${r.registered_by}</div>
       </div>`;
 
