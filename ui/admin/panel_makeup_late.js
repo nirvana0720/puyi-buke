@@ -61,10 +61,6 @@
           <select class="buke-select f-class" style="font-size:14px;display:none"><option value="">請選擇班別</option></select>
           <select class="buke-select f-session" style="font-size:14px;display:none"><option value="">請選擇缺課堂次</option></select>
           <div class="f-more" style="display:none;flex-direction:column;gap:8px">
-            <select class="buke-select f-method" style="font-size:14px">
-              <option value="影音">影音</option>
-              <option value="精舍培訓課程">精舍培訓課程</option>
-            </select>
             <label style="font-size:14px;display:flex;align-items:center;gap:8px">
               <input type="checkbox" class="f-ear" style="width:18px;height:18px"> 借用耳機
             </label>
@@ -131,7 +127,7 @@
       const { error } = await _sb.rpc('admin_register_late_makeup', {
         p_member_db_id: mem.id,
         p_session_ref:  Number(sessRef),
-        p_method:       formEl.querySelector('.f-method').value,
+        p_method:       '影音',
         p_earphone:     formEl.querySelector('.f-ear').checked,
         p_note:         formEl.querySelector('.f-note').value.trim() || null,
         p_planned_date: pdate,

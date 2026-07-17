@@ -81,12 +81,13 @@
         <div class="buke-tab" data-tab="transfer">日夜補登記</div>
         <div class="buke-tab" data-tab="late">逾期補課登記</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="mo-add-makeup" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登補課</button>
+        <button id="mo-print" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🖶 列印</button>
       </div>
       <div id="mo-add-form" style="margin-bottom:12px"></div>
       <div id="mo-urgent" style="margin-bottom:14px"></div>
@@ -109,6 +110,7 @@
       await fetchMakeups(); applyAndRender(container);
     });
     container.querySelector('#mo-add-makeup').addEventListener('click', () => showAddMakeupForm(container));
+    container.querySelector('#mo-print').addEventListener('click', () => window.print());
   }
 
   /** ⏰ 即將逾期／已逾期補課摘要（跨班，比照學長/班長看板 urgentMakeups 邏輯：

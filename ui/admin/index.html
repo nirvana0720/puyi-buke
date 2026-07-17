@@ -86,6 +86,24 @@
       border: 1px solid var(--header-tx); border-radius: var(--r-pill);
       padding: 3px 10px; color: var(--header-tx);
     }
+
+    /* ── 列印樣式（補課登記／日夜補登記專用，其餘分頁不受影響）──
+       只留清單本身：藏側邊選單、頁籤、篩選列、按鈕、編輯區；
+       CTIS 勾選框列印時只顯示勾選結果文字，不印可互動的 checkbox 控件 */
+    @media print {
+      .buke-header, #manual-warn-banner, .admin-sidebar,
+      .buke-tabs, .no-print, .buke-btn, .action-row, .edit-area {
+        display: none !important;
+      }
+      .admin-shell { display: block; height: auto; }
+      .admin-content { overflow: visible; padding: 0; }
+
+      body.print-hide-ctis-done .buke-card:has(.f-ctis:checked) { display: none; }
+
+      .ctis-check input[type="checkbox"] { display: none; }
+      .ctis-check span { display: none; }
+      .ctis-check::before { content: attr(data-ctis); }
+    }
   </style>
 </head>
 <body>

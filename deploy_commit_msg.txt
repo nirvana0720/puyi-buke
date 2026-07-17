@@ -1,59 +1,12 @@
-2026-07-16（續）node_syncer 現場自動同步器上線、櫃台版面修正、亂碼補掃
+修正逾期補課表單、日夜補登記加CTIS勾選與列印功能
 
-- 新增 grabber/node_syncer/：改用 Node 自帶引擎做現場排程同步，繞過舊機
-  PowerShell 2.0／.NET 無 TLS 1.2 的死牆（schedule_sync.ps1 v8 雖修好剖析，
-  但該機 .NET 連 TLS 1.2 都不支援，連不上 supabase/zenclass）。含 sync.js、
-  setup_schedule.bat、test_sync_now.bat、1_download_node.bat、config、README、
-  docs（開發紀錄＋其他精舍部署SOP）。普宜刷卡機已上線，每天12時段自動同步，
-  現場實測四夜研經班45筆、四日研經班41筆同步成功
-- grabber/schedule_sync.ps1 v8：現場PS2.0再踩雷，字串內「字面大括號」（含-f的
-  {0}占位符）會讓該機剖析器大括號配對算歪報UnexpectedToken；全檔清光字面大括號
-  （-f改+串接、JSON的大括號改[char]123/125）。此路線已被node_syncer取代，保留備查
-- 修正 ui/kiosk/kiosk_alerts.js：今日登記清單「補課」「日夜調班」兩區塊改粗體
-  標題＋上方分隔線＋群組間距，避免黏在一起看不清
-- 新增 db/fix_學員姓名法號雙重編碼亂碼_補掃_20260716.sql：掃07-02匯入殘留、
-  147筆修復漏網的姓名/法號亂碼（學長帳號、退班/未同步學員），逆轉雙重編碼
-
-2026-07-16 重構48現場電腦排程同步、重構49機台號碼登記、重構50機台數量改系統設定、
-綁定zenclass真代碼防呆修正、匯入編碼修復
-
-- 重構50：影音補課機台數量從config.js寫死改成後台「補課規定設定」頁面可調整
-  （每家精舍機器台數不同，換分院不用再改程式碼重新部署）
-  db/重構50_機台數量改系統設定.sql（settings表加video_machine_count欄位）、
-  db/rpc_06_kiosk.sql（kiosk_get_day回傳加video_machine_count）、
-  ui/admin/panel_makeup_rules.js（新增設定區塊）、
-  ui/kiosk/kiosk_render.js、ui/kiosk/kiosk.js（機台數量改吃這個值，
-  config.js的VIDEO_MACHINE_COUNT保留當備援預設值）
-- 重構49：義工櫃台補課登記加「機台號碼」欄位（出席時選機台，下拉選單顯示
-  使用中機台與占用者，機台數可於 config/config.js 的 VIDEO_MACHINE_COUNT 設定）
-  db/重構49_影補登記機台號碼.sql、db/rpc_06_kiosk.sql、db/grant_rpc.sql、
-  config/config.js、ui/kiosk/kiosk_render.js、ui/kiosk/kiosk.js、
-  ui/admin/panel_makeup_overview.js、ui/admin/panel_makeup_late.js
-- 修正 db/rpc_06_kiosk.sql 的 kiosk_get_day：makeups 陣列補回 member_id
-  欄位（原本只回 member_name，義工櫃台編輯補課表單的「缺課堂次」下拉選單
-  靠 member_id 查詢缺課清單，缺這欄位導致每次編輯都「載入失敗」，
-  這是舊有問題，測機台號碼功能時才發現）
-- 修正 ui/admin/panel_import.js：匯入名冊改用 readAsArrayBuffer+{type:'array'}
-  取代 readAsBinaryString+{type:'binary'}，避免中文姓名/法號被雙重UTF-8編碼
-  壞掉（2026-07-02匯入的147筆姓名/法號因此變亂碼，已於資料庫端修復並備份，
-  見 db/fix_學員姓名法號雙重編碼亂碼_20260716.sql）
-- 義工櫃台頁（ui/kiosk/index.html）按鍵文字改粗體，字看不清楚問題（只加這一頁，
-  不影響後台/學長班長/學員頁）
-
-- 後台：綁定zenclass真代碼表單，掃描錨點欄位一律可手動編輯，不再因為自動抓到
-  錨點就鎖死（今天四日研經班就是卡在這裡：自動錨點抓到不同號段的班，掃描
-  永遠掃不到，改成一律開放編輯即可換錨點重掃）
-- 後台：預設錨點改成優先找「同系列」已綁定班（班名去掉日/夜相同者），減少
-  需要手動換錨點的機會
-- 新增 grabber/schedule_sync.ps1、grabber/setup_schedule.bat：現場電腦排程
-  同步出缺勤資料，取代Supabase雲端排程（pg_cron/pg_net連不到zenclass，
-  DNS解析失敗）與人工點書籤（重構48，取代重構47）
-- 新增 grabber/test_sync_now.bat：一鍵手動測試同步，不用等排程時間到，
-  不用碰PowerShell指令
-- 修正 grabber/schedule_sync.ps1：現場刷卡電腦實測踩雷，改用不依賴
-  $PSScriptRoot／ConvertTo-Json的寫法（某些精舍電腦PowerShell版本較舊
-  或精簡，這兩個抓不到會整支腳本壞掉）
-- 再修正 grabber/schedule_sync.ps1：刷卡電腦二度實測又踩雷，雙引號字串裡
-  用$(...)子運算式在該電腦的PowerShell版本會直接ParserError，改用-f格式化運算子
-- 三度修正 grabber/schedule_sync.ps1：反引號(`)換行接續在該電腦環境不穩定，
-  全檔案改成該行寫到底，不用反引號換行
+- ui/admin/panel_makeup_late.js：移除「影音／精舍培訓課程」下拉選單（.f-method），
+  逾期補課登記只適用禪修班，補課方式恆為影音，精舍培訓課程選項不適用此表單；
+  送出 RPC admin_register_late_makeup 時 p_method 固定帶 '影音'
+- 新增 db/重構51_調班CTIS已更新勾選.sql：transfers 表加 ctis_updated 欄位，
+  新增 RPC admin_transfer_set_ctis_updated
+- ui/admin/panel_transfer_overview.js：日夜補登記每筆記錄加「已更新CTIS資料」
+  checkbox；篩選列與清單加列印按鈕，可勾選「只印未更新CTIS」排除已勾選項目
+- ui/admin/panel_makeup_overview.js：補課登記清單加列印按鈕
+- ui/admin/index.html：新增 @media print 樣式，列印時隱藏側邊選單/頁籤/篩選列/
+  按鈕，CTIS checkbox 改印文字狀態

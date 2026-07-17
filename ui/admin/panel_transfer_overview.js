@@ -10,7 +10,7 @@
 
   async function fetchTransfers() {
     const { data, error } = await _sb.from('transfers').select(
-      'id,to_date,status,attended_at,late_mark,registered_by,note,' +
+      'id,to_date,status,attended_at,late_mark,registered_by,note,ctis_updated,' +
       'members!member_ref(name,group_id,classes(class_name)),' +
       'sessions!from_session_ref(date),' +
       'classes!to_class_ref(class_name)'
@@ -57,12 +57,16 @@
         <div class="buke-tab active" data-tab="transfer">日夜補登記</div>
         <div class="buke-tab" data-tab="late">逾期補課登記</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
         <input id="to-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="to-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
         <select id="to-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">已登記</option><option value="attended">已出席</option><option value="absent">未到</option></select>
         <button id="to-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="to-add" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登日夜補</button>
+        <button id="to-print" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🖶 列印</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:14px">
+          <input type="checkbox" id="to-print-filter" checked style="width:18px;height:18px">只印未更新CTIS
+        </label>
       </div>
       <div id="to-add-form" style="margin-bottom:12px"></div>
       <div id="to-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
@@ -84,6 +88,12 @@
       await fetchTransfers(); applyAndRender(container);
     });
     container.querySelector('#to-add').addEventListener('click', () => showAddTransferForm(container));
+    container.querySelector('#to-print').addEventListener('click', () => {
+      const onlyUnupdated = container.querySelector('#to-print-filter').checked;
+      if (onlyUnupdated) document.body.classList.add('print-hide-ctis-done');
+      window.print();
+      document.body.classList.remove('print-hide-ctis-done');
+    });
   }
 
   function applyAndRender(container) {
@@ -129,8 +139,14 @@
       </div>
       <div style="font-size:14px;color:var(--muted);margin:6px 0">
         原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
-        ${r.late_mark ? `　遲到：${r.late_mark}` : ''}　登記人：${r.registered_by}
+        ${r.late_mark ? `　出席狀態：${r.late_mark}` : ''}　登記人：${r.registered_by}
         ${r.note ? `　備註：${r.note}` : ''}
+      </div>
+      <div style="margin:6px 0">
+        <label class="ctis-check" data-ctis="${r.ctis_updated ? '☑ 已更新CTIS資料' : '☐ 已更新CTIS資料'}" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
+          <input type="checkbox" class="f-ctis" ${r.ctis_updated ? 'checked' : ''} style="width:18px;height:18px">
+          <span>已更新CTIS資料</span>
+        </label>
       </div>
       <div class="action-row" style="display:flex;gap:6px;flex-wrap:wrap">
         ${r.status!=='已出席' ? '<button class="buke-btn btn-tr-attend" style="font-size:13px;padding:4px 12px;min-height:30px">標已出席</button>' : ''}
@@ -141,6 +157,17 @@
       </div>
       <div class="edit-area"></div>`;
 
+    card.querySelector('.f-ctis').addEventListener('change', async e => {
+      const checked = e.target.checked;
+      try {
+        const { error } = await _sb.rpc('admin_transfer_set_ctis_updated', { p_transfer_id: r.id, p_value: checked });
+        if (error) throw new Error(error.message);
+        await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
+      } catch (err) {
+        e.target.checked = !checked;
+        card.querySelector('.edit-area').innerHTML = `<div class="buke-msg err">❌ ${err.message}</div>`;
+      }
+    });
     card.querySelector('.btn-tr-attend')?.addEventListener('click', () => {
       const editArea = card.querySelector('.edit-area');
       editArea.innerHTML = `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
