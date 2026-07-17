@@ -53,6 +53,8 @@ function _renderMakeupCompletions(records) {
     </div>`;
 }
 
+const ATTENDED_MARKS = new Set(['V', 'L', 'LL', 'A', 'M', 'ML']);
+
 function renderRollcall(container, data) {
   if (!container) return;
 
@@ -62,6 +64,15 @@ function renderRollcall(container, data) {
     if (!groups.has(gid)) groups.set(gid, []);
     groups.get(gid).push(m);
   }
+
+  const members = data.members || [];
+  const attendedCount = members.filter(m => ATTENDED_MARKS.has(m.mark)).length;
+  const absentCount = members.length - attendedCount;
+  const summaryHtml = members.length
+    ? `<div class="buke-msg" style="background:var(--surface-alt);color:var(--header);font-size:16px;margin-bottom:12px">
+         目前報到 ${attendedCount} 人，未到 ${absentCount} 人
+       </div>`
+    : '';
 
   const noticeHtml = (!data.has_session || !data.is_held)
     ? `<div class="buke-msg" style="background:var(--warn-bg);color:var(--warn-tx)">
@@ -89,6 +100,7 @@ function renderRollcall(container, data) {
       <span class="lead">${data.class_name || ''}</span>
       <span class="sub">${data.session_date || ''} 點名表</span>
     </div>
+    ${summaryHtml}
     ${noticeHtml}
     ${_renderMakeupCompletions(data.makeup_completions)}
     ${groupsHtml || '<p class="buke-empty">此班目前無在學學員。</p>'}
