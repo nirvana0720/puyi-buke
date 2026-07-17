@@ -41,11 +41,12 @@ function buildProxyMakeupFieldsHtml() {
  * @param {number}      sessionRef   預填的缺課堂次 id
  * @param {number}      leaderDbId   登入者（學長/班長）的 members.id
  * @param {Function}    onDone       成功後回呼
+ * @param {string}      [extraHtml]  接在欄位最上方的唯讀顯示（例如缺課日期）
  */
-function renderProxyMakeupForm(formEl, sb, memberDbId, sessionRef, leaderDbId, onDone) {
+function renderProxyMakeupForm(formEl, sb, memberDbId, sessionRef, leaderDbId, onDone, extraHtml = '') {
   const sheet = window.LeaderModal.openSheet({
     title: '代為登記補課',
-    bodyHtml: buildProxyMakeupFieldsHtml(),
+    bodyHtml: extraHtml + buildProxyMakeupFieldsHtml(),
     onMount(panelEl) {
       const msgEl = panelEl.querySelector('.proxy-msg');
 
@@ -103,7 +104,8 @@ function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
   if (!absences.length) return;
 
   if (absences.length === 1) {
-    renderProxyMakeupForm(formEl, sb, row.id, absences[0].session_ref, leaderDbId, null);
+    const dateHtml = `<div style="margin-bottom:14px;font-size:16px">缺課日期：${absences[0].session_date}（${absences[0].mark}）</div>`;
+    renderProxyMakeupForm(formEl, sb, row.id, absences[0].session_ref, leaderDbId, null, dateHtml);
     return;
   }
 
