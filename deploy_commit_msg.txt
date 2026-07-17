@@ -19,3 +19,5 @@
   V/L/LL/A/M/ML 算報到，其餘算未到，不需新增RPC）
 - ui/leader/actions.js：修正班長代登記補課只缺1堂課時看不到缺課日期的問題，
   補上唯讀顯示（原本只有缺2堂以上才會顯示日期下拉選單）
+- ui/leader/render.js、ui/leader/actions.js：修正班長代登記補課沒有擋逾期的問題，
+  排除 deadline_date 已過期的缺課項目，不再能代登記已逾期太久的缺課

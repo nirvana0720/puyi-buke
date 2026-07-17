@@ -174,7 +174,9 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
     ? '已達結業標準'
     : `出席 ${m.physical} · 補課 ${m.makeup} · 缺課 ${m.absent} ｜ 距結業還差 ${Math.max(0, gap)} 堂`;
 
-  const hasUnreg       = (m.unregistered_absences || []).length > 0;
+  const today          = new Date().toLocaleDateString('sv-SE');
+  const availableUnreg = (m.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
+  const hasUnreg       = availableUnreg.length > 0;
   const proxyBtnId     = `card-proxy-${m.id}`;
   const proxyFormId    = `card-proxy-form-${m.id}`;
   const tfrBtnId       = `card-tfr-${m.id}`;
@@ -192,7 +194,7 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
     <div class="detail">${detailText}</div>
     <div class="card-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
       ${hasUnreg
-        ? `<button id="${proxyBtnId}" class="buke-btn small">代為登記補課（${m.unregistered_absences.length} 堂）</button>`
+        ? `<button id="${proxyBtnId}" class="buke-btn small">代為登記補課（${availableUnreg.length} 堂）</button>`
         : ''}
       <button id="${tfrBtnId}" class="buke-btn small" style="background:#1B4332;color:#fff">代為日↔夜間調班補課</button>
     </div>

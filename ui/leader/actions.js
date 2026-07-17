@@ -100,7 +100,8 @@ function renderProxyMakeupForm(formEl, sb, memberDbId, sessionRef, leaderDbId, o
  * @param {number}      leaderDbId
  */
 function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
-  const absences = row.unregistered_absences || [];
+  const today = new Date().toLocaleDateString('sv-SE');
+  const absences = (row.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
   if (!absences.length) return;
 
   if (absences.length === 1) {
