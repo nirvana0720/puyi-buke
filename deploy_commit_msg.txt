@@ -10,3 +10,5 @@
 - ui/admin/panel_makeup_overview.js：補課登記清單加列印按鈕
 - ui/admin/index.html：新增 @media print 樣式，列印時隱藏側邊選單/頁籤/篩選列/
   按鈕，CTIS checkbox 改印文字狀態
+- 日夜補登記列印版面調整為條列式：每筆2行（姓名/組別/出席狀態/CTIS同一行、
+  原班調去資訊/登記人第二行），16pt字級，只在筆與筆之間加2.5px分隔線

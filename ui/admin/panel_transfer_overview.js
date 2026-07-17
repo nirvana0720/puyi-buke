@@ -129,21 +129,22 @@
     const badge = r.status==='已出席' ? '<span class="buke-badge pass">已出席</span>'
       : r.status==='未到' ? '<span class="buke-badge danger">未到</span>'
       : '<span class="buke-badge warn">已登記</span>';
-    card.className = 'buke-card';
+    card.className = 'buke-card transfer-card';
     card.style.marginBottom = '10px';
+    const ctisText = r.ctis_updated ? '☑ 已更新CTIS資料' : '☐ 已更新CTIS資料';
     card.innerHTML = `
       <div class="row" style="flex-wrap:wrap;gap:6px">
         <div><span class="name">${r._name}</span>
           <span class="meta">${r._class_name}　${r._group}</span></div>
         ${badge}
       </div>
-      <div style="font-size:14px;color:var(--muted);margin:6px 0">
+      <div class="tr-meta-line" style="font-size:14px;color:var(--muted);margin:6px 0">
         原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
         ${r.late_mark ? `　出席狀態：${r.late_mark}` : ''}　登記人：${r.registered_by}
         ${r.note ? `　備註：${r.note}` : ''}
       </div>
-      <div style="margin:6px 0">
-        <label class="ctis-check" data-ctis="${r.ctis_updated ? '☑ 已更新CTIS資料' : '☐ 已更新CTIS資料'}" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
+      <div class="tr-ctis-row" style="margin:6px 0">
+        <label class="ctis-check" data-ctis="${ctisText}" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
           <input type="checkbox" class="f-ctis" ${r.ctis_updated ? 'checked' : ''} style="width:18px;height:18px">
           <span>已更新CTIS資料</span>
         </label>
@@ -155,7 +156,11 @@
         <button class="buke-btn buke-btn-ghost btn-edit-tr" style="font-size:13px;padding:4px 12px;min-height:30px">編輯備註</button>
         <button class="buke-btn buke-btn-danger btn-del-tr" style="font-size:13px;padding:4px 12px;min-height:30px">刪除</button>
       </div>
-      <div class="edit-area"></div>`;
+      <div class="edit-area"></div>
+      <div class="tr-print-rec">
+        <div class="tr-print-line1">${r._name}　${r._group}　${r.status}　${ctisText}</div>
+        <div class="tr-print-line2">${r._class_name}／${r._from_date} → ${r._to_class}／${r.to_date}、登記人：${r.registered_by}</div>
+      </div>`;
 
     card.querySelector('.f-ctis').addEventListener('change', async e => {
       const checked = e.target.checked;

@@ -87,6 +87,9 @@
       padding: 3px 10px; color: var(--header-tx);
     }
 
+    /* 日夜補登記的條列式列印內容，畫面上一律隱藏，只在 @media print 顯示 */
+    .tr-print-rec { display: none; }
+
     /* ── 列印樣式（補課登記／日夜補登記專用，其餘分頁不受影響）──
        只留清單本身：藏側邊選單、頁籤、篩選列、按鈕、編輯區；
        CTIS 勾選框列印時只顯示勾選結果文字，不印可互動的 checkbox 控件 */
@@ -103,6 +106,32 @@
       .ctis-check input[type="checkbox"] { display: none; }
       .ctis-check span { display: none; }
       .ctis-check::before { content: attr(data-ctis); }
+
+      /* 日夜補登記：條列式（取代卡片框），每筆兩行，筆與筆之間才加分隔線 */
+      .transfer-card {
+        border: none;
+        border-radius: 0;
+        background: none;
+        padding: 0;
+        margin: 0;
+      }
+      .transfer-card .row,
+      .transfer-card .tr-meta-line,
+      .transfer-card .tr-ctis-row {
+        display: none !important;
+      }
+      .transfer-card .tr-print-rec {
+        display: block;
+        padding: 5px 0;
+      }
+      .transfer-card + .transfer-card .tr-print-rec {
+        border-top: 2.5px solid #000;
+      }
+      .tr-print-line1, .tr-print-line2 {
+        font-size: 16pt;
+        line-height: 1.4;
+        margin: 0;
+      }
     }
   </style>
 </head>
