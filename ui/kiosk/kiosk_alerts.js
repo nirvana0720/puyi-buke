@@ -84,8 +84,8 @@ function renderTodayRegistrations(regs, callbacks) {
   }).join('');
 
   el.innerHTML = `
-    ${makeups.length ? `<div style="padding:8px 16px;font-size:13px;color:var(--muted);background:var(--surface-alt)">補課（${makeups.length}）</div><div>${mkHtml}</div>` : ''}
-    ${transfers.length ? `<div style="padding:8px 16px;font-size:13px;color:var(--muted);background:var(--surface-alt)">日↔夜間調班補課（${transfers.length}）</div><div>${trHtml}</div>` : ''}
+    ${makeups.length ? `<div style="margin-top:4px;padding:8px 16px;font-size:13px;font-weight:700;background:var(--surface-alt);border-top:2px solid rgba(0,0,0,.12)">📗 補課（${makeups.length}）</div><div>${mkHtml}</div>` : ''}
+    ${transfers.length ? `<div style="margin-top:14px;padding:8px 16px;font-size:13px;font-weight:700;background:var(--surface-alt);border-top:2px solid rgba(0,0,0,.12)">🔁 日↔夜間調班補課（${transfers.length}）</div><div>${trHtml}</div>` : ''}
   `;
 
   el.querySelectorAll('[data-cancel-reg-makeup]').forEach(btn => {

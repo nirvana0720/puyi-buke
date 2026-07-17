@@ -14,6 +14,18 @@
 #   同理，ConvertTo-Json 這個 cmdlet 在某些精簡版 PowerShell 環境會抓不到
 #   （現場電腦實測過：Add-Content -Path 是 Null、ConvertTo-Json 無法辨識），
 #   所以下面自己刻一個 ConvertTo-JsonCompat，不依賴系統模組是否有載入 ConvertTo-Json。
+#   ⚠️ 2026-07-16 現場踩雷修正②：雙引號字串裡不要用 $(...) 子運算式（尤其一個字串裡
+#   塞兩個以上 $(...)，或 $(...) 裡面又呼叫靜態方法如 [uri]::EscapeDataString(...)）。
+#   現場實測會噴 ParserError: IncompleteDollarSubexpressionReference（PowerShell 2.0
+#   對這種巢狀 $(...) 語法解析有問題）。
+#   ⚠️ 2026-07-16 現場踩雷修正⑤（v8，本輪）：連 -f 格式化運算子也不能用！因為 -f 的
+#   占位符（數字外面包一對大括號）本身就是「字串裡的字面大括號」，而現場這台 PowerShell
+#   剖析器會把字串內的大括號也算進大括號配對計數（照標準語法不該如此），導致在 JSON
+#   序列化這種大括號密度高的地方噴 UnexpectedToken（右大括號），報錯行號跟真正肇因對不上。
+#   本輪把全檔所有 -f 改成加號字串串接（不含任何大括號、也不含 $(...)），並把手刻 JSON
+#   裡唯一那兩個字面大括號改成 char 代碼 123（左）／125（右）。＝原始碼裡（連註解在內）
+#   都不再出現任何一個字面大括號字元，只剩程式區塊與雜湊表這種「結構用」的大括號。
+#   字串組法優先序：純變數內插 大於 加號串接 大於 一律不用 -f、不用 $(...)。
 
 # ── 0. 設定（比照 config/config.js 現有真實值）───────────────────
 $SUPABASE_URL      = 'https://yiowkvxwvwpzebdriksu.supabase.co'
@@ -28,9 +40,32 @@ $LogFile   = Join-Path $ScriptDir 'sync_log.txt'
 
 function Write-Log {
     param([string]$Message)
-    $line = '[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    $line = '[' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '] ' + $Message
     Write-Output $line
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
+}
+
+# ⚠️ 2026-07-16 現場踩雷修正④：字串裡的跳脫字元（反斜線、雙引號、`r `n `t）
+# 一律改用 [char] 代碼組出來，不要在原始碼裡直接寫「反斜線接雙引號」這種組合，
+# 也不要用反引號跳脫序列（`r `n `t）。現場這台 PowerShell 對「單引號字串裡的
+# 反斜線」與「雙引號字串裡的反引號跳脫」解析都不穩定，會在完全不相關的行數
+# 噴 ParserError: UnexpectedToken（右大括號）（很難排查，錯誤位置跟真正肇因對不上）。
+# 改用 .NET 的 .Replace() 字串方法（非 -replace regex 運算子）+ [char] 代碼，
+# 從原始碼層級完全避開反斜線／反引號的解析歧義。
+$script:JB = [char]92   # 反斜線 backslash
+$script:JQ = [char]34   # 雙引號 double-quote
+
+function ConvertTo-JsonEscapedString {
+    param([string]$Text)
+    if ($null -eq $Text) { return '' }
+    $bs  = [string]$script:JB
+    $dq  = [string]$script:JQ
+    $out = $Text.Replace($bs, $bs + $bs)
+    $out = $out.Replace($dq, $bs + $dq)
+    $out = $out.Replace([string][char]13, $bs + 'r')
+    $out = $out.Replace([string][char]10, $bs + 'n')
+    $out = $out.Replace([string][char]9,  $bs + 't')
+    return $out
 }
 
 # 手刻 JSON 序列化（不依賴 ConvertTo-Json，見上面 2026-07-16 踩雷說明）。
@@ -43,14 +78,13 @@ function ConvertTo-JsonCompat {
     if ($InputObject -is [System.Collections.IDictionary]) {
         $pairs = @()
         foreach ($key in $InputObject.Keys) {
-            $escKey = ($key -replace '\\','\\\\') -replace '"','\"'
+            $escKey = ConvertTo-JsonEscapedString $key
             $pairs += ('"' + $escKey + '":' + (ConvertTo-JsonCompat $InputObject[$key]))
         }
-        return '{' + ($pairs -join ',') + '}'
+        return ([string][char]123) + ($pairs -join ',') + ([string][char]125)
     }
     if ($InputObject -is [string]) {
-        $esc = ($InputObject -replace '\\','\\\\') -replace '"','\"'
-        $esc = ($esc -replace "`r",'\r') -replace "`n",'\n' -replace "`t",'\t'
+        $esc = ConvertTo-JsonEscapedString $InputObject
         return '"' + $esc + '"'
     }
     if ($InputObject -is [System.Collections.IEnumerable]) {
@@ -58,7 +92,7 @@ function ConvertTo-JsonCompat {
         foreach ($item in $InputObject) { $items += (ConvertTo-JsonCompat $item) }
         return '[' + ($items -join ',') + ']'
     }
-    $esc = ("$InputObject" -replace '\\','\\\\') -replace '"','\"'
+    $esc = ConvertTo-JsonEscapedString "$InputObject"
     return '"' + $esc + '"'
 }
 
@@ -75,8 +109,7 @@ function Invoke-SupabaseRpc {
         'apikey'        = $SUPABASE_ANON_KEY
         'Authorization' = "Bearer $SUPABASE_ANON_KEY"
     }
-    return Invoke-RestMethod -Uri "$SUPABASE_URL/rest/v1/rpc/$FunctionName" -Method Post `
-        -Headers $headers -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 30
+    return Invoke-RestMethod -Uri "$SUPABASE_URL/rest/v1/rpc/$FunctionName" -Method Post -Headers $headers -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 30
 }
 
 # 寫一筆同步結果到 cron_sync_log（db/重構48_cron_sync_log開放anon寫入.sql 已開放 anon 寫入）。
@@ -99,10 +132,9 @@ function Write-CronSyncLog {
             'apikey'        = $SUPABASE_ANON_KEY
             'Authorization' = "Bearer $SUPABASE_ANON_KEY"
         }
-        Invoke-RestMethod -Uri "$SUPABASE_URL/rest/v1/cron_sync_log" -Method Post `
-            -Headers $headers -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 15 | Out-Null
+        Invoke-RestMethod -Uri "$SUPABASE_URL/rest/v1/cron_sync_log" -Method Post -Headers $headers -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 15 | Out-Null
     } catch {
-        Write-Output "（cron_sync_log 寫入失敗，不影響同步結果：$($_.Exception.Message)）"
+        Write-Output ("（cron_sync_log 寫入失敗，不影響同步結果：" + $_.Exception.Message + "）")
     }
 }
 
@@ -113,7 +145,7 @@ $dowChars = @('日', '一', '二', '三', '四', '五', '六')   # Get-Date 的 
 $dowStr   = $dowChars[[int]$nowTaipei.DayOfWeek]
 
 Write-Log "===== 開始同步 $dateStr（星期$dowStr）====="
-Write-Log "（PowerShell 版本：$($PSVersionTable.PSVersion)，日後排查用）"
+Write-Log ("（PowerShell 版本：" + $PSVersionTable.PSVersion + "，日後排查用）")
 
 # ── 2. 取我方已建檔的班別清單（同 bookmarklet.js 用的 list_audit_classes RPC）──
 try {
@@ -124,7 +156,7 @@ try {
     $classesResult = Invoke-SupabaseRpc -FunctionName 'list_audit_classes' -Body @{}
     $classes = @($classesResult)
 } catch {
-    Write-Log "X 取班別清單失敗：$($_.Exception.Message)"
+    Write-Log ("X 取班別清單失敗：" + $_.Exception.Message)
     exit 1
 }
 
@@ -145,7 +177,7 @@ if ($matched.Count -eq 0) {
     exit 0
 }
 
-Write-Log ("找到 {0} 個班別：{1}" -f $matched.Count, ($matched.class_name -join '、'))
+Write-Log ("找到 " + $matched.Count + " 個班別：" + ($matched.class_name -join '、'))
 
 # ── 4. 逐一同步（單一班別失敗不中斷整支腳本，continue 下一班）─────────
 $includes = 'attendMark,memberId,aliasName,ctDharmaName,classGroupId,memberGroupNum,' +
@@ -153,12 +185,13 @@ $includes = 'attendMark,memberId,aliasName,ctDharmaName,classGroupId,memberGroup
 
 foreach ($cls in $matched) {
     try {
-        $attendUrl = "$API_BASE/meditation/api/kiosk/class_attend_records" +
-            "?classDate=$dateStr&classId=$($cls.class_id)&includes=$([uri]::EscapeDataString($includes))"
+        $classIdEnc  = [uri]::EscapeDataString($cls.class_id)
+        $includesEnc = [uri]::EscapeDataString($includes)
+        $attendUrl = $API_BASE + '/meditation/api/kiosk/class_attend_records?classDate=' + $dateStr + '&classId=' + $classIdEnc + '&includes=' + $includesEnc
         $attendResp = Invoke-RestMethod -Uri $attendUrl -Method Get -TimeoutSec 20
 
         if ($attendResp.errCode -ne 200) {
-            throw "取報到名單失敗（errCode $($attendResp.errCode)）"
+            throw ("取報到名單失敗（errCode " + $attendResp.errCode + "）")
         }
         $records = @($attendResp.items)
 
@@ -196,10 +229,10 @@ foreach ($cls in $matched) {
             p_records = $pRecords
         }
 
-        Write-Log "OK $($cls.class_name)：同步成功，$($result.synced) 筆"
+        Write-Log ("OK " + $cls.class_name + "：同步成功，" + $result.synced + " 筆")
         Write-CronSyncLog -ClassId $cls.class_id -ClassName $cls.class_name -Ok $true -Synced $result.synced
     } catch {
-        Write-Log "X $($cls.class_name)：同步失敗 - $($_.Exception.Message)"
+        Write-Log ("X " + $cls.class_name + "：同步失敗 - " + $_.Exception.Message)
         Write-CronSyncLog -ClassId $cls.class_id -ClassName $cls.class_name -Ok $false -ErrorMsg $_.Exception.Message
     }
 }
