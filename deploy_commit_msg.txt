@@ -1,23 +1,14 @@
-修正逾期補課表單、日夜補登記加CTIS勾選與列印功能
+義工櫃台「到場提醒」加結案按鈕，補上跨日結案缺口
 
-- ui/admin/panel_makeup_late.js：移除「影音／精舍培訓課程」下拉選單（.f-method），
-  逾期補課登記只適用禪修班，補課方式恆為影音，精舍培訓課程選項不適用此表單；
-  送出 RPC admin_register_late_makeup 時 p_method 固定帶 '影音'
-- 新增 db/重構51_調班CTIS已更新勾選.sql：transfers 表加 ctis_updated 欄位，
-  新增 RPC admin_transfer_set_ctis_updated
-- ui/admin/panel_transfer_overview.js：日夜補登記每筆記錄加「已更新CTIS資料」
-  checkbox；篩選列與清單加列印按鈕，可勾選「只印未更新CTIS」排除已勾選項目
-- ui/admin/panel_makeup_overview.js：補課登記清單加列印按鈕
-- ui/admin/index.html：新增 @media print 樣式，列印時隱藏側邊選單/頁籤/篩選列/
-  按鈕，CTIS checkbox 改印文字狀態
-- 日夜補登記列印版面調整為條列式：每筆2行（姓名/組別/出席狀態/CTIS同一行、
-  原班調去資訊/登記人第二行），16pt字級，只在筆與筆之間加2.5px分隔線
-- 新增 formatAttendStatus()：出席狀態代碼（L/LL/A/準時）轉中文（遲到/靜坐遲到/
-  晚到/準時），修正畫面與列印都只顯示原始代碼、遲到者列印看不出遲到的問題
-- 列印筆與筆間距加大（padding 5px→16px），維持16pt字級，看起來不會擠在一起
-- ui/leader/rollcall.js：點名頁加「目前報到X人，未到X人」即時統計（純前端計算，
-  V/L/LL/A/M/ML 算報到，其餘算未到，不需新增RPC）
-- ui/leader/actions.js：修正班長代登記補課只缺1堂課時看不到缺課日期的問題，
-  補上唯讀顯示（原本只有缺2堂以上才會顯示日期下拉選單）
-- ui/leader/render.js、ui/leader/actions.js：修正班長代登記補課沒有擋逾期的問題，
-  排除 deadline_date 已過期的缺課項目，不再能代登記已逾期太久的缺課
+- 問題：義工櫃台「到場中超過3小時尚未結案」警示框（kiosk_alerts.js）純顯示、
+  沒有操作按鈕；「此堂課尚未補完」/「補課完成」這兩顆按鈕只掛在「今日補課」
+  卡片清單，而卡片清單是用 planned_date=所選日期 撈的。一旦到場記錄跨過午夜，
+  該筆補課卡片就從當日清單消失，義工找不到按鈕可以結案，只能手動把日期選擇器
+  切回原本那天才處理得到（發現案例：諶淑玲 7/17 到場，7/18 卡在警示框裡）。
+- ui/kiosk/kiosk_alerts.js：renderAttendanceAlerts() 加 callbacks 參數
+  {onDepart, onComplete}，每筆逾時記錄旁邊加「此堂課尚未補完」／「補課完成」
+  兩顆按鈕，成功後該筆從警示框移除，失敗顯示錯誤訊息並恢復按鈕可點擊
+- ui/kiosk/kiosk.js：loadAlertsAndRegistrations() 串接既有 RPC
+  kiosk_makeup_depart／kiosk_makeup_complete（兩者只認 makeup_id，不挑日期，
+  直接重用，沒有新增 SQL），結案後順帶 refreshTodayLogAndMachines() 更新
+  到場記錄表與機台使用狀況

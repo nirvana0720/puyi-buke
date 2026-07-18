@@ -12,7 +12,10 @@ function _fmtTime(ts) {
 }
 
 // ── B. 到場提醒 ──────────────────────────────────────────────────
-function renderAttendanceAlerts(alerts) {
+// callbacks = {onDepart, onComplete}（結案逾時未結案的到場記錄；跟卡片清單共用同兩支 RPC，
+// 只認 makeup_id，不挑「目前選的日期」，所以就算逾時記錄的補課日不是今天也能直接結案）
+function renderAttendanceAlerts(alerts, callbacks) {
+  const { onDepart, onComplete } = callbacks || {};
   const el = document.getElementById('kiosk-attendance-alerts');
   if (!el) return;
 
@@ -24,10 +27,23 @@ function renderAttendanceAlerts(alerts) {
   const overdueHtml = overdue.length ? `
     <div class="buke-section-block care">
       <div class="buke-section">⚠️ 到場中超過 3 小時尚未結案（${overdue.length} 筆）</div>
-      ${overdue.map(a => `
-        <div style="font-size:14px;padding:4px 0">
-          <span style="font-weight:500">${a.member_name}</span>
-          <span style="color:var(--muted)">　${a.class_name}　到場時間：${_fmtTime(a.attended_at)}</span>
+      ${overdue.map((a, i) => `
+        <div class="alert-overdue-row" data-overdue-row="${i}" style="font-size:14px;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>
+            <span style="font-weight:500">${a.member_name}</span>
+            <span style="color:var(--muted)">　${a.class_name}　到場時間：${_fmtTime(a.attended_at)}</span>
+          </span>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="buke-btn" data-alert-notdone="${i}"
+                    style="font-size:12px;padding:4px 10px;background:var(--warn-tx);border-color:var(--warn-tx)">
+              此堂課尚未補完
+            </button>
+            <button class="buke-btn" data-alert-complete="${i}"
+                    style="font-size:12px;padding:4px 10px;background:var(--ok-tx);border-color:var(--ok-tx)">
+              補課完成
+            </button>
+            <span class="alert-overdue-msg" data-overdue-msg="${i}" style="font-size:12px"></span>
+          </span>
         </div>`).join('')}
     </div>` : '';
 
@@ -42,6 +58,45 @@ function renderAttendanceAlerts(alerts) {
     </div>` : '';
 
   el.innerHTML = overdueHtml + noShowHtml;
+
+  function lockRow(i) {
+    const row = el.querySelector(`[data-overdue-row="${i}"]`);
+    row?.querySelectorAll('button').forEach(b => b.setAttribute('disabled', 'disabled'));
+  }
+
+  el.querySelectorAll('[data-alert-notdone]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.alertNotdone);
+      const msg = el.querySelector(`[data-overdue-msg="${i}"]`);
+      lockRow(i);
+      msg.textContent = '記錄中…'; msg.style.color = 'var(--muted)';
+      try {
+        await onDepart(overdue[i].makeup_id);
+        msg.textContent = '✅ 已確認，尚未補完'; msg.style.color = 'var(--ok-tx)';
+        setTimeout(() => { el.querySelector(`[data-overdue-row="${i}"]`)?.remove(); }, 800);
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        el.querySelectorAll(`[data-overdue-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-alert-complete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.alertComplete);
+      const msg = el.querySelector(`[data-overdue-msg="${i}"]`);
+      lockRow(i);
+      msg.textContent = '記錄中…'; msg.style.color = 'var(--muted)';
+      try {
+        await onComplete(overdue[i].makeup_id);
+        msg.textContent = '✅ 補課完成'; msg.style.color = 'var(--ok-tx)';
+        setTimeout(() => { el.querySelector(`[data-overdue-row="${i}"]`)?.remove(); }, 800);
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        el.querySelectorAll(`[data-overdue-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
+      }
+    });
+  });
 }
 
 // ── G. 今日登記清單 ──────────────────────────────────────────────

@@ -266,7 +266,16 @@ function todayStr() {
   async function loadAlertsAndRegistrations() {
     try {
       const alerts = await kioskGetAttendanceAlerts(sb, staff.staff_id);
-      window.KioskAlerts.renderAttendanceAlerts(alerts);
+      window.KioskAlerts.renderAttendanceAlerts(alerts, {
+        onDepart: async (makeupId) => {
+          await kioskMakeupDepart(sb, staff.staff_id, makeupId);
+          await refreshTodayLogAndMachines();
+        },
+        onComplete: async (makeupId) => {
+          await kioskMakeupComplete(sb, staff.staff_id, makeupId);
+          await refreshTodayLogAndMachines();
+        },
+      });
     } catch (_) {}
     try {
       const regs = await kioskGetTodayRegistrations(sb, staff.staff_id);
