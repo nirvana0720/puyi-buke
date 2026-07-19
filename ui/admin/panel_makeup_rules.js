@@ -222,8 +222,11 @@
         </details>
       </div>
 
-      <!-- §6 儲存 -->
-      <div style="display:flex;align-items:center;gap:14px">
+      <!-- §6 儲存（浮在畫面底部，滾到哪都看得到、點得到，避免漏按） -->
+      <div style="position:sticky;bottom:0;margin:20px -24px -20px;padding:14px 24px;
+                  background:var(--bg);border-top:1px solid var(--line);
+                  box-shadow:0 -4px 10px rgba(0,0,0,.06);
+                  display:flex;align-items:center;gap:14px;z-index:5">
         <button id="btn-save-rules" class="buke-btn" style="font-size:15px;padding:10px 28px">
           儲存設定
         </button>
