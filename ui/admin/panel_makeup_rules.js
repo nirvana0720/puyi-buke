@@ -103,16 +103,6 @@
     const machineCount = row.video_machine_count ?? 5;
 
     container.innerHTML = `
-      <!-- 頂部也放一顆儲存按鈕：這頁很長，設定完不用捲到最下面才存得到檔 -->
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:10px 14px;
-                  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md)">
-        <button id="btn-save-rules-top" class="buke-btn" style="font-size:14px;padding:8px 20px">
-          儲存設定
-        </button>
-        <span id="save-msg-top" style="font-size:13px"></span>
-        <span style="font-size:12px;color:var(--muted);margin-left:auto">下方也有同一顆按鈕</span>
-      </div>
-
       <!-- §1 可開始補課日期 -->
       <div class="buke-card" style="margin-bottom:16px">
         <div class="name" style="font-size:16px;font-weight:500;margin-bottom:12px">可開始補課日期</div>
@@ -305,15 +295,33 @@
       renderSlots(slots, slotListEl, () => {});
     });
 
-    // ── 儲存（頂部／底部兩顆按鈕共用同一套邏輯，狀態同步顯示在兩邊） ──────
-    const saveBtnTop = container.querySelector('#btn-save-rules-top');
-    const saveBtnBot = container.querySelector('#btn-save-rules');
-    const msgTop     = container.querySelector('#save-msg-top');
-    const msgBot     = container.querySelector('#save-msg');
+    // ── 儲存＋離開頁面前未存檔提醒（避免漏按儲存就跳走白改一場） ──────
+    const saveBtn = container.querySelector('#btn-save-rules');
+    const msgEl   = container.querySelector('#save-msg');
+    let dirty = false;
+
+    // 任何欄位變動（含加時段／加黑名單日期觸發的 DOM 變化）都標記成「未儲存」
+    container.addEventListener('input',  () => { dirty = true; });
+    container.addEventListener('change', () => { dirty = true; });
+    container.querySelector('#btn-add-slot').addEventListener('click', () => { dirty = true; });
+    container.querySelector('#btn-add-blackout').addEventListener('click', () => { dirty = true; });
+
+    function beforeUnloadHandler(e) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    // 換頁籤重新進來這個面板會重跑一次 renderPanel，先移除上一輪掛的監聽避免疊加
+    if (window.__makeupRulesBeforeUnload) {
+      window.removeEventListener('beforeunload', window.__makeupRulesBeforeUnload);
+    }
+    window.__makeupRulesBeforeUnload = beforeUnloadHandler;
+    window.addEventListener('beforeunload', beforeUnloadHandler);
 
     function setSaveState(text, color, disabled) {
-      [msgTop, msgBot].forEach(m => { m.textContent = text; m.style.color = color; });
-      [saveBtnTop, saveBtnBot].forEach(b => { b.disabled = disabled; });
+      msgEl.textContent = text;
+      msgEl.style.color = color;
+      saveBtn.disabled = disabled;
     }
 
     async function doSave() {
@@ -339,6 +347,7 @@
       try {
         await saveGlobalSettings(sb, row.id, fields);
         setSaveState('✅ 已儲存', 'var(--ok-tx)', false);
+        dirty = false;
         // 更新本地 row 以供下次儲存合併 extra_json
         Object.assign(row, fields);
       } catch (e) {
@@ -346,8 +355,7 @@
       }
     }
 
-    saveBtnTop.addEventListener('click', doSave);
-    saveBtnBot.addEventListener('click', doSave);
+    saveBtn.addEventListener('click', doSave);
   }
 
   window.PanelMakeupRules = { loadMakeupRulesPanel };
