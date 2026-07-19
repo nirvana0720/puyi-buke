@@ -1,8 +1,12 @@
-修正補課規定設定頁儲存按鈕浮動異常留白
+補課規定設定頁儲存按鈕改頂部+底部各一顆，放棄 sticky 浮動
 
-- 問題：儲存按鈕改 sticky 浮動後，畫面底部按鈕上方留了一截空白、看得到下方內容
-  卡片穿透，原因是 sticky 元素用了負值 margin（bleed 到容器邊緣）跟 sticky 的
-  定位計算互相干擾
-- ui/admin/panel_makeup_rules.js：拿掉負值 margin，改用容器原本的內距，不再
-  bleed 到邊緣（背景色跟頁面背景色一致，視覺上不會有色差，只是左右會有跟其他
-  卡片一致的內距，不會頂到邊）
+- 背景：先前把儲存按鈕改成 position:sticky 浮動在畫面底部，部署後兩次都回報同一個
+  視覺異常（按鈕上方留白、下方內容穿透看得到、文字被截斷），拿掉負值 margin 後
+  問題依舊，判斷是 sticky 在良師父瀏覽器環境下跟其他樣式（box-shadow／容器結構）
+  互相干擾，不容易穩定重現排查
+- 改採更簡單可靠的做法：放棄 sticky，改在頁面最上方（標題下方）多放一顆一樣的
+  「儲存設定」按鈕，跟原本頁尾那顆共用同一套儲存邏輯與狀態顯示，兩顆按鈕點任一顆
+  都會存檔，狀態訊息同步顯示在兩邊
+- ui/admin/panel_makeup_rules.js：儲存邏輯抽成 doSave()／setSaveState()，頂部
+  新增 #btn-save-rules-top + #save-msg-top，底部維持原本 #btn-save-rules +
+  #save-msg（拿掉 sticky／box-shadow，改回普通版面內的按鈕列）

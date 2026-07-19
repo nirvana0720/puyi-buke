@@ -103,6 +103,16 @@
     const machineCount = row.video_machine_count ?? 5;
 
     container.innerHTML = `
+      <!-- 頂部也放一顆儲存按鈕：這頁很長，設定完不用捲到最下面才存得到檔 -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:10px 14px;
+                  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md)">
+        <button id="btn-save-rules-top" class="buke-btn" style="font-size:14px;padding:8px 20px">
+          儲存設定
+        </button>
+        <span id="save-msg-top" style="font-size:13px"></span>
+        <span style="font-size:12px;color:var(--muted);margin-left:auto">下方也有同一顆按鈕</span>
+      </div>
+
       <!-- §1 可開始補課日期 -->
       <div class="buke-card" style="margin-bottom:16px">
         <div class="name" style="font-size:16px;font-weight:500;margin-bottom:12px">可開始補課日期</div>
@@ -222,11 +232,8 @@
         </details>
       </div>
 
-      <!-- §6 儲存（浮在畫面底部，滾到哪都看得到、點得到，避免漏按） -->
-      <div style="position:sticky;bottom:0;margin-top:20px;padding:14px 0;
-                  background:var(--bg);border-top:1px solid var(--line);
-                  box-shadow:0 -4px 10px rgba(0,0,0,.06);
-                  display:flex;align-items:center;gap:14px;z-index:5">
+      <!-- §6 儲存 -->
+      <div style="display:flex;align-items:center;gap:14px;padding-top:14px;border-top:1px solid var(--line)">
         <button id="btn-save-rules" class="buke-btn" style="font-size:15px;padding:10px 28px">
           儲存設定
         </button>
@@ -298,13 +305,19 @@
       renderSlots(slots, slotListEl, () => {});
     });
 
-    // ── 儲存 ─────────────────────────────────────────────
-    container.querySelector('#btn-save-rules').addEventListener('click', async () => {
-      const saveBtn = container.querySelector('#btn-save-rules');
-      const msgEl   = container.querySelector('#save-msg');
-      saveBtn.disabled = true;
-      msgEl.textContent = '儲存中…';
-      msgEl.style.color = 'var(--muted)';
+    // ── 儲存（頂部／底部兩顆按鈕共用同一套邏輯，狀態同步顯示在兩邊） ──────
+    const saveBtnTop = container.querySelector('#btn-save-rules-top');
+    const saveBtnBot = container.querySelector('#btn-save-rules');
+    const msgTop     = container.querySelector('#save-msg-top');
+    const msgBot     = container.querySelector('#save-msg');
+
+    function setSaveState(text, color, disabled) {
+      [msgTop, msgBot].forEach(m => { m.textContent = text; m.style.color = color; });
+      [saveBtnTop, saveBtnBot].forEach(b => { b.disabled = disabled; });
+    }
+
+    async function doSave() {
+      setSaveState('儲存中…', 'var(--muted)', true);
 
       const selMode  = container.querySelector('input[name="mode"]:checked')?.value || '下週一';
       const nDays    = Number(container.querySelector('#inp-days').value) || 7;
@@ -325,17 +338,16 @@
 
       try {
         await saveGlobalSettings(sb, row.id, fields);
-        msgEl.textContent = '✅ 已儲存';
-        msgEl.style.color = 'var(--ok-tx)';
+        setSaveState('✅ 已儲存', 'var(--ok-tx)', false);
         // 更新本地 row 以供下次儲存合併 extra_json
         Object.assign(row, fields);
       } catch (e) {
-        msgEl.textContent = `❌ ${e.message}`;
-        msgEl.style.color = 'var(--danger-tx)';
-      } finally {
-        saveBtn.disabled = false;
+        setSaveState(`❌ ${e.message}`, 'var(--danger-tx)', false);
       }
-    });
+    }
+
+    saveBtnTop.addEventListener('click', doSave);
+    saveBtnBot.addEventListener('click', doSave);
   }
 
   window.PanelMakeupRules = { loadMakeupRulesPanel };
