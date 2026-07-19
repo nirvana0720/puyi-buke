@@ -12,9 +12,11 @@
 (function () {
   const { fetchClasses, compareClassSchedule } = window.AdminData;
 
-  let _allRows     = [];
-  let _scheduleMap = new Map();
-  let _searchName  = '';
+  let _allRows       = [];
+  let _scheduleMap   = new Map();
+  let _searchName    = '';
+  let _selectedClass = '';   // '' = 全部班別，否則存 class_ref（字串比對，select value 一律字串）
+  let _selectedLight = '';   // '' = 全部燈號，'red' / 'yellow'
 
   async function loadRiskPanel(sb, container) {
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
@@ -28,9 +30,11 @@
         container.innerHTML = '<p class="buke-empty">目前沒有進行中的班別資料。</p>';
         return;
       }
-      _allRows     = data;
-      _scheduleMap = new Map(classes.map(c => [c.id, c]));
-      _searchName  = '';
+      _allRows       = data;
+      _scheduleMap   = new Map(classes.map(c => [c.id, c]));
+      _searchName    = '';
+      _selectedClass = '';
+      _selectedLight = '';
       renderRiskShell(container);
       renderRiskBody(container);
     } catch (e) {
@@ -56,16 +60,22 @@
       || (totalCredit + remaining + stillFixable) < needCredit;
   }
 
-  /** 姓名篩選後的資料來源，供 renderRiskBody／CSV 匯出共用 */
+  /** 姓名／班別篩選後的資料來源，供 renderRiskBody／CSV 匯出共用 */
   function filteredRows() {
-    return _allRows.filter(r => !_searchName || r.name.toLowerCase().includes(_searchName));
+    return _allRows.filter(r =>
+      (!_searchName || r.name.toLowerCase().includes(_searchName)) &&
+      (!_selectedClass || String(r.class_ref) === _selectedClass)
+    );
   }
 
   /** 分燈號＋依班分組（跟畫面上看到的一致，供表格渲染／CSV 匯出共用，避免各算一份） */
   function computeRiskGroups(rows) {
     // 分燈號：已達標(grad_ok) 一律不顯示；紅＝結業已不可逆；黃＝逾期未補剛好3堂（最後緩衝）
-    const redRows    = rows.filter(r => !r.grad_ok && isUnrecoverable(r));
-    const yellowRows = rows.filter(r => !r.grad_ok && !isUnrecoverable(r) && r.overdue_absent === 3);
+    // 再套用燈號篩選（_selectedLight）：選了紅燈就不算黃燈進 atRisk，反之亦然
+    const redRows    = _selectedLight === 'yellow' ? [] :
+      rows.filter(r => !r.grad_ok && isUnrecoverable(r));
+    const yellowRows = _selectedLight === 'red' ? [] :
+      rows.filter(r => !r.grad_ok && !isUnrecoverable(r) && r.overdue_absent === 3);
     const atRisk     = [...redRows, ...yellowRows];
 
     // 依班分組
@@ -101,23 +111,58 @@
     return csvRows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  /** 篩選說明列＋姓名搜尋框＋匯出 CSV 按鈕，只執行一次；#risk-content 交給 renderRiskBody 反覆重繪 */
+  /** 依目前資料算出去重、排序過的班別清單，供班別篩選下拉選單用 */
+  function distinctSortedClasses() {
+    const seen = new Map();
+    for (const r of _allRows) {
+      if (!seen.has(r.class_ref)) seen.set(r.class_ref, r.class_name);
+    }
+    return [...seen.entries()].sort(([refA], [refB]) =>
+      compareClassSchedule(_scheduleMap.get(refA), _scheduleMap.get(refB)));
+  }
+
+  /** 篩選說明列＋姓名搜尋框＋班別/燈號篩選＋匯出 CSV 按鈕，只執行一次；#risk-content 交給 renderRiskBody 反覆重繪 */
   function renderRiskShell(container) {
+    const classOptions = distinctSortedClasses()
+      .map(([ref, name]) => `<option value="${ref}"${_selectedClass === String(ref) ? ' selected' : ''}>${name}</option>`)
+      .join('');
+
     container.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <p style="font-size:14px;color:var(--muted);margin:0">
           🔴 逾期未補超過 3 堂（不可逆）　🟡 逾期未補剛好 3 堂（最後緩衝，再逾期一堂就不可逆）
           已達標或緩衝充足的不顯示。
         </p>
-        <input id="risk-search-name" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:34px">
-        <button id="btn-export-risk" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:5px 14px;min-height:34px">
-          匯出 CSV
-        </button>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <select id="risk-filter-class" class="buke-select" style="font-size:14px;min-height:34px">
+            <option value="">全部班別</option>
+            ${classOptions}
+          </select>
+          <select id="risk-filter-light" class="buke-select" style="font-size:14px;min-height:34px">
+            <option value="">全部燈號</option>
+            <option value="red"${_selectedLight === 'red' ? ' selected' : ''}>🔴 紅燈</option>
+            <option value="yellow"${_selectedLight === 'yellow' ? ' selected' : ''}>🟡 黃燈</option>
+          </select>
+          <input id="risk-search-name" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:34px">
+          <button id="btn-export-risk" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:5px 14px;min-height:34px">
+            匯出 CSV
+          </button>
+        </div>
       </div>
       <div id="risk-content"></div>`;
 
     container.querySelector('#risk-search-name').addEventListener('input', e => {
       _searchName = e.target.value.trim().toLowerCase();
+      renderRiskBody(container);
+    });
+
+    container.querySelector('#risk-filter-class').addEventListener('change', e => {
+      _selectedClass = e.target.value;
+      renderRiskBody(container);
+    });
+
+    container.querySelector('#risk-filter-light').addEventListener('change', e => {
+      _selectedLight = e.target.value;
       renderRiskBody(container);
     });
 

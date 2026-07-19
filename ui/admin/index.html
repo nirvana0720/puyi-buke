@@ -188,9 +188,6 @@
       <button class="menu-item" data-panel="overview">🗂️ 各班總覽</button>
       <button class="menu-item" data-panel="risk">🚨 結業風險總表</button>
       <button class="menu-item" data-panel="students">📃 學員總表</button>
-
-      <hr class="menu-divider">
-      <button class="menu-item" data-panel="coming">🔄 刷卡資料同步說明</button>
     </nav>
 
     <!-- 右側內容 -->
@@ -287,20 +284,6 @@
     'import':           { title: '匯入資料',       load: (c) => window.PanelImport.loadImportPanel(sb, c)       },
     'volunteers':       { title: '義工帳號',       load: (c) => window.PanelVolunteers.loadVolunteersPanel(sb, c) },
     'training':         { title: '精舍培訓課程管理', load: (c) => window.PanelTraining.loadTrainingPanel(sb, c) },
-    coming:         { title: '刷卡資料同步說明', load: (c) => { c.innerHTML = `
-      <div style="color:var(--muted);padding:20px 0;line-height:1.9;max-width:640px">
-        <p>此功能改用瀏覽器書籤操作，不在後台執行。<br>
-        （登入 CTIS 分頁，再按書籤）</p>
-
-        <p>到刷卡電腦（或任何已登入 CTIS 的瀏覽器），點書籤列的同步書籤即可。<br>
-        想補過去某一天的資料，書籤跳出的視窗直接輸入日期即可，不用來這裡操作。</p>
-
-        <p style="margin-top:20px"><strong>想確認資料是否跟官方報到系統一致？</strong><br>
-        另外還有一支「稽核比對」書籤，一樣要在已登入 CTIS 的瀏覽器使用。<br>
-        選擇要稽核的班別後，會自動把整期已上過的堂次都跟官方資料比對一次，跑完下載一份差異報告 CSV（不會直接修改資料庫）。<br>
-        報告裡如果有「缺漏」或「不一致」，要修正的話，回到刷卡電腦用原本的同步書籤，手動輸入那一天的日期重新同步即可。</p>
-      </div>
-    `; } },
   };
 
   // 跨面板跳轉（供 panel_overview.js 的「看名單」使用）
