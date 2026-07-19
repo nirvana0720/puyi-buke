@@ -1,14 +1,7 @@
-義工櫃台「到場提醒」加結案按鈕，補上跨日結案缺口
+後台補課登記總覽卡片加顯示預約補課日期時間
 
-- 問題：義工櫃台「到場中超過3小時尚未結案」警示框（kiosk_alerts.js）純顯示、
-  沒有操作按鈕；「此堂課尚未補完」/「補課完成」這兩顆按鈕只掛在「今日補課」
-  卡片清單，而卡片清單是用 planned_date=所選日期 撈的。一旦到場記錄跨過午夜，
-  該筆補課卡片就從當日清單消失，義工找不到按鈕可以結案，只能手動把日期選擇器
-  切回原本那天才處理得到（發現案例：諶淑玲 7/17 到場，7/18 卡在警示框裡）。
-- ui/kiosk/kiosk_alerts.js：renderAttendanceAlerts() 加 callbacks 參數
-  {onDepart, onComplete}，每筆逾時記錄旁邊加「此堂課尚未補完」／「補課完成」
-  兩顆按鈕，成功後該筆從警示框移除，失敗顯示錯誤訊息並恢復按鈕可點擊
-- ui/kiosk/kiosk.js：loadAlertsAndRegistrations() 串接既有 RPC
-  kiosk_makeup_depart／kiosk_makeup_complete（兩者只認 makeup_id，不挑日期，
-  直接重用，沒有新增 SQL），結案後順帶 refreshTodayLogAndMachines() 更新
-  到場記錄表與機台使用狀況
+- 問題：良師父截圖回報後台「補課／調課總覽」的補課登記卡片只顯示缺課日、耳機、
+  備註、截止日、登記人，沒有顯示學員實際預約要來補課的日期與時段（planned_date/
+  planned_slot），要點「編輯」才看得到，不方便一眼確認
+- ui/admin/panel_makeup_overview.js：buildMakeupCard() 卡片說明列加「預約補課：
+  YYYY-MM-DD HH:MM」，沒填則顯示「未填」

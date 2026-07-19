@@ -268,7 +268,7 @@
         ${statusBadge}
       </div>
       <div style="font-size:14px;color:var(--muted);margin:6px 0">
-        缺課日：${r._date}${r.earphone ? '　🎧耳機' : ''}${r.note ? `　備註：${r.note}` : ''}
+        缺課日：${r._date}　預約補課：${r.planned_date ? `${r.planned_date} ${r.planned_slot || ''}` : '未填'}${r.earphone ? '　🎧耳機' : ''}${r.note ? `　備註：${r.note}` : ''}
         　截止：${r.deadline_date}　登記人：${r.registered_by}
         ${r._att_records.length > 0 ? `
           <div style="margin-top:4px">
