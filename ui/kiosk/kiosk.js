@@ -275,6 +275,15 @@ function todayStr() {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
           await refreshTodayLogAndMachines();
         },
+        onEdit: async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
+          await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
+          // 改期後這筆可能不再符合「未到場」條件（例如改到未來日期），整組警示重新整理即可
+          setTimeout(() => loadAlertsAndRegistrations(), 800);
+        },
+        onCancelReg: async (makeupId) => {
+          await kioskCancelMakeup(sb, staff.staff_id, makeupId);
+        },
+        lookupMember: async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode),
       });
     } catch (_) {}
     try {

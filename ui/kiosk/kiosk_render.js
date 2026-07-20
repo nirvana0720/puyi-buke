@@ -281,7 +281,7 @@ function renderMakeups(makeups, callbacks, machineStatus, machineCount) {
   el.querySelectorAll('[data-edit-makeup]').forEach(btn => {
     btn.addEventListener('click', () => {
       const i = Number(btn.dataset.editMakeup);
-      toggleEditMakeupForm(i, makeups[i], onEdit, lookupMember);
+      toggleEditMakeupForm(`mk-edit-${i}`, makeups[i], onEdit, lookupMember);
     });
   });
 
@@ -325,8 +325,10 @@ function renderMakeups(makeups, callbacks, machineStatus, machineCount) {
 }
 
 // ── 補課卡片編輯表單（義工櫃台，僅改缺課堂次/耳機/預約時間/備註，期限系統重算不可編輯） ─
-function toggleEditMakeupForm(i, m, onEdit, lookupMember) {
-  const area = document.getElementById(`mk-edit-${i}`);
+// areaId：放表單的容器 id（今日補課清單用 mk-edit-i，到場提醒的未到場清單用 mk-edit-noshow-i，
+// 共用同一支表單邏輯，只是掛的容器不同）
+function toggleEditMakeupForm(areaId, m, onEdit, lookupMember) {
+  const area = document.getElementById(areaId);
   if (!area) return;
   if (area.innerHTML) { area.innerHTML = ''; return; }
 
@@ -779,5 +781,5 @@ function renderTodayLog(records) {
 }
 
 if (typeof window !== 'undefined') {
-  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions };
+  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm };
 }

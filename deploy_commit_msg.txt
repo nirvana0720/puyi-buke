@@ -1,16 +1,15 @@
-結業風險總表加班別/燈號篩選；移除過時的刷卡資料同步說明頁
+到場提醒「完全沒有到場」清單加編輯/取消登記按鈕
 
-- 問題1：良師父回報「結業風險總表」精舍學員多時頁面會很長，沒辦法只看特定班別或
-  只看紅燈/黃燈
-- ui/admin/panel_risk.js：加「全部班別」下拉（依 _allRows 去重排序）與「全部燈號」
-  下拉（全部/紅燈/黃燈），跟既有姓名搜尋一起套用；CSV 匯出也會反映目前篩選結果
-  （因為跟畫面共用同一套 computeRiskGroups/filteredRows）
+- 問題：良師父回報，義工在櫃台看到「已登記補課但預約時段已過、完全沒有到場」的警示
+  只有文字，沒有任何按鈕可以處理；日期一過，這筆也不會出現在「今日補課清單」卡片，
+  變成永遠卡住
 
-- 問題2：良師父指出「刷卡資料同步說明」這頁已經過時可以整個刪掉——07-17 已改用
-  node_syncer 現場排程自動同步，不再需要人工點瀏覽器書籤同步
-- ui/admin/index.html：移除側邊選單「🔄 刷卡資料同步說明」項目與對應 `coming`
-  面板內容（含分隔線 hr）
-- ⚠️ 附帶取捨：這頁原本除了說明「同步書籤」（已過時），也說明了「稽核比對」書籤
-  （選班別後跟官方 CTIS 資料比對、下載差異報告 CSV，跟自動同步是不同功能，理論上
-  還有用）的使用方式，這次一併移除。如果之後還需要稽核比對的操作說明，要另外找
-  地方補回來。
+- ui/kiosk/kiosk_render.js：編輯表單 toggleEditMakeupForm 原本綁死只給「今日補課清單」
+  卡片用，改成吃 areaId 參數，讓「到場提醒」也能共用同一套表單；掛到 window.KioskRender
+- ui/kiosk/kiosk_alerts.js：「完全沒有到場」每筆加「編輯」「取消登記」兩顆按鈕
+- ui/kiosk/kiosk.js：loadAlertsAndRegistrations 補上對應的 RPC 呼叫（改期／取消登記／
+  查學員），改期成功後自動重新整理警示清單
+
+- 需搭配後端 SQL：db/fix_點名補課完成名單與到場提醒排除已完成.sql（kiosk_get_attendance_alerts
+  的 no_show 區塊加 member_id/session_date/earphone/note 欄位）要另外到 Supabase SQL Editor
+  執行，這裡只是前端部署

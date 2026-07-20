@@ -12,10 +12,13 @@ function _fmtTime(ts) {
 }
 
 // ── B. 到場提醒 ──────────────────────────────────────────────────
-// callbacks = {onDepart, onComplete}（結案逾時未結案的到場記錄；跟卡片清單共用同兩支 RPC，
-// 只認 makeup_id，不挑「目前選的日期」，所以就算逾時記錄的補課日不是今天也能直接結案）
+// callbacks = {onDepart, onComplete, onEdit, onCancelReg, lookupMember}
+// onDepart/onComplete：結案逾時未結案的到場記錄；跟卡片清單共用同兩支 RPC，只認 makeup_id，
+//   不挑「目前選的日期」，所以就算逾時記錄的補課日不是今天也能直接結案
+// onEdit/onCancelReg/lookupMember：完全沒到場那組的「編輯」「取消登記」，跟今日補課清單共用
+//   同一套 kiosk_edit_makeup／kiosk_cancel_makeup／編輯表單（見 kiosk_render.js toggleEditMakeupForm）
 function renderAttendanceAlerts(alerts, callbacks) {
-  const { onDepart, onComplete } = callbacks || {};
+  const { onDepart, onComplete, onEdit, onCancelReg, lookupMember } = callbacks || {};
   const el = document.getElementById('kiosk-attendance-alerts');
   if (!el) return;
 
@@ -50,10 +53,20 @@ function renderAttendanceAlerts(alerts, callbacks) {
   const noShowHtml = noShow.length ? `
     <div class="buke-section-block care">
       <div class="buke-section">⚠️ 已登記補課但預約時段已過、完全沒有到場（${noShow.length} 筆）</div>
-      ${noShow.map(a => `
-        <div style="font-size:14px;padding:4px 0">
-          <span style="font-weight:500">${a.member_name}</span>
-          <span style="color:var(--muted)">　${a.class_name}　預約：${a.planned_date || ''} ${a.planned_slot || ''}</span>
+      ${noShow.map((a, i) => `
+        <div class="alert-noshow-row" data-noshow-row="${i}" style="font-size:14px;padding:6px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>
+              <span style="font-weight:500">${a.member_name}</span>
+              <span style="color:var(--muted)">　${a.class_name}　預約：${a.planned_date || ''} ${a.planned_slot || ''}</span>
+            </span>
+            <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="buke-btn buke-btn-ghost" data-noshow-edit="${i}" style="font-size:12px;padding:4px 10px">編輯</button>
+              <button class="buke-btn buke-btn-ghost" data-noshow-cancel="${i}" style="font-size:12px;padding:4px 10px">取消登記</button>
+              <span class="alert-noshow-msg" data-noshow-msg="${i}" style="font-size:12px"></span>
+            </span>
+          </div>
+          <div class="mk-edit-area" id="mk-edit-noshow-${i}"></div>
         </div>`).join('')}
     </div>` : '';
 
@@ -94,6 +107,43 @@ function renderAttendanceAlerts(alerts, callbacks) {
       } catch (e) {
         msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
         el.querySelectorAll(`[data-overdue-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
+      }
+    });
+  });
+
+  function lockNoShowRow(i) {
+    const row = el.querySelector(`[data-noshow-row="${i}"]`);
+    row?.querySelectorAll('button').forEach(b => b.setAttribute('disabled', 'disabled'));
+  }
+  function unlockNoShowRow(i) {
+    el.querySelectorAll(`[data-noshow-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
+  }
+
+  el.querySelectorAll('[data-noshow-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.noshowEdit);
+      window.KioskRender.toggleEditMakeupForm(`mk-edit-noshow-${i}`, noShow[i], async (...args) => {
+        await onEdit(...args);
+        const msg = el.querySelector(`[data-noshow-msg="${i}"]`);
+        if (msg) { msg.textContent = '✅ 已改期，清單稍後會自動更新'; msg.style.color = 'var(--ok-tx)'; }
+      }, lookupMember);
+    });
+  });
+
+  el.querySelectorAll('[data-noshow-cancel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.noshowCancel);
+      const msg = el.querySelector(`[data-noshow-msg="${i}"]`);
+      if (!confirm(`確定要取消 ${noShow[i].member_name} 這筆補課登記嗎？`)) return;
+      lockNoShowRow(i);
+      msg.textContent = '處理中…'; msg.style.color = 'var(--muted)';
+      try {
+        await onCancelReg(noShow[i].makeup_id);
+        msg.textContent = '✅ 已取消登記'; msg.style.color = 'var(--ok-tx)';
+        setTimeout(() => { el.querySelector(`[data-noshow-row="${i}"]`)?.remove(); }, 800);
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        unlockNoShowRow(i);
       }
     });
   });
