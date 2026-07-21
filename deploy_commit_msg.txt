@@ -13,3 +13,10 @@
 - 需搭配後端 SQL：db/fix_點名補課完成名單與到場提醒排除已完成.sql（kiosk_get_attendance_alerts
   的 no_show 區塊加 member_id/session_date/earphone/note 欄位）要另外到 Supabase SQL Editor
   執行，這裡只是前端部署
+
+5 個頁面靜態標題改中性字樣，準備未來移交其他精舍
+
+- ui/student/index.html、ui/login/index.html、ui/home/index.html、ui/admin/index.html、
+  ui/leader/index.html：<div class="title"> 原本寫死「普宜精舍...」，改成中性的「課務系統」
+- 功能沒變，這幾處本來就會被各頁 JS 用 CONFIG.TEMPLE_NAME 動態覆蓋，只是改掉載入瞬間
+  會閃一下「普宜精舍」舊字的問題，為未來移交其他精舍鋪路
