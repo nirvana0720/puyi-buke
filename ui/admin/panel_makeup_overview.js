@@ -220,11 +220,28 @@
     });
   }
 
-  // ── 共用：載入該生缺堂到 select ────────────────────────────────
-  async function _loadAbsencesInto(memberRef, sesSel, curRef) {
-    const { data } = await _sb.from('attendance')
-      .select('session_ref,sessions!inner(date,week_num)').eq('member_ref', memberRef).in('mark',['O','A','LL']);
-    sesSel.innerHTML = '<option value="">請選擇</option>' + (data||[]).map(a =>
+  // ── 共用：載入該生缺堂到 select（排除已有補課登記／依 onlyOverdue 排除已逾期或未逾期） ──
+  async function _loadAbsencesInto(memberRef, sesSel, curRef, opts = {}) {
+    const { excludeMakeupId, onlyOverdue = false } = opts;
+    const [{ data: attData }, { data: setRow }, { data: muRows }] = await Promise.all([
+      _sb.from('attendance').select('session_ref,sessions!inner(date,week_num)').eq('member_ref', memberRef).in('mark', ['O', 'A', 'LL']),
+      _sb.from('settings').select('makeup_deadline_days').is('class_ref', null).single(),
+      _sb.from('makeups').select('id,session_ref').eq('member_ref', memberRef),
+    ]);
+    const deadlineDays  = setRow?.makeup_deadline_days || 40;
+    const usedSessions  = new Map((muRows || []).map(m => [m.session_ref, m.id]));
+
+    const filtered = (attData || []).filter(a => {
+      if (a.session_ref === curRef) return true;
+      const usedById = usedSessions.get(a.session_ref);
+      if (usedById !== undefined && usedById !== excludeMakeupId) return false;
+      const deadline = new Date(a.sessions.date);
+      deadline.setDate(deadline.getDate() + deadlineDays);
+      const overdue = deadline.toLocaleDateString('sv-SE') < TODAY;
+      return onlyOverdue ? overdue : !overdue;
+    });
+
+    sesSel.innerHTML = '<option value="">請選擇</option>' + filtered.map(a =>
       `<option value="${a.session_ref}"${a.session_ref===curRef?' selected':''}>${a.sessions?.date}</option>`
     ).join('');
     sesSel.style.display = 'block';
@@ -354,10 +371,10 @@
       clsSel.innerHTML = _ems.map((m,i) =>
         `<option value="${i}"${m.class_ref===r._class_ref?' selected':''}>${m.classes?.class_name||'—'}</option>`).join('');
       const initIdx = _ems.findIndex(m => m.class_ref === r._class_ref);
-      if (initIdx >= 0) await _loadAbsencesInto(_ems[initIdx].id, sesSel, r.session_ref);
+      if (initIdx >= 0) await _loadAbsencesInto(_ems[initIdx].id, sesSel, r.session_ref, { excludeMakeupId: r.id });
     })();
     clsSel.addEventListener('change', async () => {
-      const m = _ems[Number(clsSel.value)]; if (m) await _loadAbsencesInto(m.id, sesSel, 0);
+      const m = _ems[Number(clsSel.value)]; if (m) await _loadAbsencesInto(m.id, sesSel, 0, { excludeMakeupId: r.id });
     });
     area.querySelector('.btn-save-mu').addEventListener('click', async () => {
       const mem = _ems[Number(clsSel.value)], sessRef = Number(sesSel.value);

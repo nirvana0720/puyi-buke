@@ -108,7 +108,7 @@
     formEl.querySelector('.f-class').addEventListener('change', async () => {
       const mem = _members[Number(formEl.querySelector('.f-class').value)];
       if (!mem) return;
-      await window.PanelMakeupOverview._loadAbsencesInto(mem.id, formEl.querySelector('.f-session'), 0);
+      await window.PanelMakeupOverview._loadAbsencesInto(mem.id, formEl.querySelector('.f-session'), 0, { onlyOverdue: true });
       formEl.querySelector('.f-more').style.display = 'flex';
     });
 
