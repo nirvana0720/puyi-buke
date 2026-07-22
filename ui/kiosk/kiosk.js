@@ -93,6 +93,27 @@ async function kioskTrainingMakeupComplete(sb, staffId, trainingMakeupId) {
   return data;
 }
 
+// 2026-07-22 培訓補課比照影片補課加上到場（選機台）／取消到場／尚未補完
+async function kioskTrainingMakeupAttend(sb, staffId, trainingMakeupId, machineNumber) {
+  const { data, error } = await sb.rpc('kiosk_training_makeup_attend', {
+    p_staff_id: staffId, p_training_makeup_id: trainingMakeupId, p_machine_number: machineNumber ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskTrainingMakeupCancelAttend(sb, staffId, trainingMakeupId) {
+  const { data, error } = await sb.rpc('kiosk_training_makeup_cancel_attend', { p_staff_id: staffId, p_training_makeup_id: trainingMakeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function kioskTrainingMakeupDepart(sb, staffId, trainingMakeupId) {
+  const { data, error } = await sb.rpc('kiosk_training_makeup_depart', { p_staff_id: staffId, p_training_makeup_id: trainingMakeupId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 async function fetchKioskTrainingClasses(sb) {
   const { data, error } = await sb.rpc('get_training_classes');
   if (error) throw new Error(error.message);
@@ -273,7 +294,7 @@ function todayStr() {
         },
         onComplete: async (makeupId) => {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
-          await refreshTodayLogAndMachines();
+          loadDay(datePicker.value); // 完成後重新載入，讓卡片從「今日補課」清單消失，而不是只在畫面上改標籤
         },
         onEdit: async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
           await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
@@ -337,8 +358,9 @@ function todayStr() {
       });
       renderMakeups(makeups, {
         onAttend: async (makeupId, machineNumber) => {
-          await kioskMakeupAttend(sb, staff.staff_id, makeupId, machineNumber);
+          const result = await kioskMakeupAttend(sb, staff.staff_id, makeupId, machineNumber);
           await refreshTodayLogAndMachines();
+          if (result && result.warning) alert(result.warning); // 甲案：還有更早缺課的提醒
         },
         onDepart: async (makeupId) => {
           await kioskMakeupDepart(sb, staff.staff_id, makeupId);
@@ -346,7 +368,7 @@ function todayStr() {
         },
         onComplete: async (makeupId) => {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
-          await refreshTodayLogAndMachines();
+          loadDay(datePicker.value); // 完成後重新載入，讓卡片從「今日補課」清單消失，而不是只在畫面上改標籤
         },
         onEdit: async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
           await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
@@ -361,10 +383,25 @@ function todayStr() {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
         },
       }, machineStatus, machineCount);
-      renderTrainingMakeupsToday(
-        day.training_makeups || [],
-        async (id) => { await kioskTrainingMakeupComplete(sb, staff.staff_id, id); }
-      );
+      renderTrainingMakeupsToday(day.training_makeups || [], {
+        onAttend: async (trainingMakeupId, machineNumber) => {
+          const result = await kioskTrainingMakeupAttend(sb, staff.staff_id, trainingMakeupId, machineNumber);
+          await refreshTodayLogAndMachines();
+          if (result && result.warning) alert(result.warning); // 甲案：還有更早培訓補課登記的提醒
+        },
+        onCancelAttend: async (trainingMakeupId) => {
+          await kioskTrainingMakeupCancelAttend(sb, staff.staff_id, trainingMakeupId);
+          await refreshTodayLogAndMachines();
+        },
+        onDepart: async (trainingMakeupId) => {
+          await kioskTrainingMakeupDepart(sb, staff.staff_id, trainingMakeupId);
+          await refreshTodayLogAndMachines();
+        },
+        onComplete: async (trainingMakeupId) => {
+          await kioskTrainingMakeupComplete(sb, staff.staff_id, trainingMakeupId);
+          loadDay(datePicker.value); // 完成後重新載入，讓卡片從「今日培訓補課」清單消失
+        },
+      }, machineStatus, machineCount);
       KioskRender.renderTodayLog(todayLogRecords);
       await loadAlertsAndRegistrations();
     } catch (err) {
@@ -546,7 +583,8 @@ if (typeof window !== 'undefined') {
     kioskMakeupDepart, kioskEditMakeup, kioskGetTodayLog,
     kioskLookupMember, kioskRegisterMakeup, kioskRegisterTransfer, kioskEditTransferNote,
     fetchKioskTrainingClasses, fetchKioskTrainingSessions, kioskRegisterTrainingMakeup,
-    kioskTrainingMakeupComplete,
+    kioskTrainingMakeupComplete, kioskTrainingMakeupAttend, kioskTrainingMakeupCancelAttend,
+    kioskTrainingMakeupDepart,
     kioskGetAttendanceAlerts, kioskMakeupCancelAttend, kioskTransferResetToRegistered,
     kioskCancelMakeup, kioskCancelTransfer, kioskGetTodayRegistrations,
   };

@@ -1,22 +1,17 @@
-到場提醒「完全沒有到場」清單加編輯/取消登記按鈕
+義工櫃台：培訓補課補齊到場/機台流程＋補課完成即時消失＋標籤簡化
 
-- 問題：良師父回報，義工在櫃台看到「已登記補課但預約時段已過、完全沒有到場」的警示
-  只有文字，沒有任何按鈕可以處理；日期一過，這筆也不會出現在「今日補課清單」卡片，
-  變成永遠卡住
+- 培訓補課比照影片補課，補上「到場（選機台）／取消到場／此堂課尚未補完／補課完成」
+  四顆按鍵，機台號碼跟影片補課共用同一個號碼池
+- 到場時若學員還有更早缺課（或更早的培訓補課登記）尚未補完，跳出提醒讓義工確認
+  今天該從哪一堂開始補（不擋，只是提示）
+- 需搭配後端 SQL：db/重構50_培訓補課到場機台與缺課提醒.sql → db/rpc_06_kiosk.sql →
+  db/grant_rpc.sql（依序執行，詳見 db/執行順序.md 步驟 87-90），這裡先部署前端
 
-- ui/kiosk/kiosk_render.js：編輯表單 toggleEditMakeupForm 原本綁死只給「今日補課清單」
-  卡片用，改成吃 areaId 參數，讓「到場提醒」也能共用同一套表單；掛到 window.KioskRender
-- ui/kiosk/kiosk_alerts.js：「完全沒有到場」每筆加「編輯」「取消登記」兩顆按鈕
-- ui/kiosk/kiosk.js：loadAlertsAndRegistrations 補上對應的 RPC 呼叫（改期／取消登記／
-  查學員），改期成功後自動重新整理警示清單
+- 問題：良師父回報，按下「補課完成」／培訓補課「完成」後，那筆資料還留在「今日補課」
+  「今日培訓補課」清單上（只是改標成已完成），要重新整理頁面才會真的消失，容易讓
+  櫃台誤以為還沒處理完
+- ui/kiosk/kiosk.js：所有 onComplete（今日補課清單、到場提醒裡的完成按鈕、培訓補課）
+  完成 RPC 呼叫成功後，改成呼叫 loadDay() 整批重新載入，卡片自然從清單消失
 
-- 需搭配後端 SQL：db/fix_點名補課完成名單與到場提醒排除已完成.sql（kiosk_get_attendance_alerts
-  的 no_show 區塊加 member_id/session_date/earphone/note 欄位）要另外到 Supabase SQL Editor
-  執行，這裡只是前端部署
-
-5 個頁面靜態標題改中性字樣，準備未來移交其他精舍
-
-- ui/student/index.html、ui/login/index.html、ui/home/index.html、ui/admin/index.html、
-  ui/leader/index.html：<div class="title"> 原本寫死「普宜精舍...」，改成中性的「課務系統」
-- 功能沒變，這幾處本來就會被各頁 JS 用 CONFIG.TEMPLE_NAME 動態覆蓋，只是改掉載入瞬間
-  會閃一下「普宜精舍」舊字的問題，為未來移交其他精舍鋪路
+- ui/kiosk/index.html：現場登記分頁按鈕文字「現場登記補課 / 其他日預約」簡化為
+  「現場登記預約補課」

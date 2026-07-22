@@ -148,7 +148,8 @@ function buildMachineOptions(machineStatus, machineCount) {
 // （不重新整理整個清單，只換 option 文字，避免其他卡片操作被打斷）
 function updateMachineOptions(machineStatus) {
   const busyMap = new Map((machineStatus || []).map(s => [s.machine_number, s.member_name]));
-  document.querySelectorAll('.mk-machine-select').forEach(sel => {
+  // .mk-machine-select＝影片補課、.tmk-machine-select＝培訓補課，機台號碼共用同一個池，兩邊都要更新
+  document.querySelectorAll('.mk-machine-select, .tmk-machine-select').forEach(sel => {
     const kept = sel.value;
     Array.from(sel.options).forEach(opt => {
       const n = Number(opt.value);
@@ -696,30 +697,110 @@ function renderTransferRegisterForm(containerId, member, classes, onSubmit) {
 }
 
 // ── 今日培訓補課清單 ──────────────────────────────────────────────
-function renderTrainingMakeupsToday(trainingMakeups, onComplete) {
+// 2026-07-22：比照影片補課，加上「到場（選機台）→ 此堂課尚未補完／補課完成」流程。
+// 機台號碼跟影片補課共用同一個號碼池，所以 machineStatus/machineCount 直接沿用
+// kiosk.js 算好的同一份資料（見 loadDay 裡 computeMachineStatus 已經把兩邊到場紀錄併在一起）。
+// callbacks = {onAttend, onCancelAttend, onDepart, onComplete}
+function renderTrainingMakeupsToday(trainingMakeups, callbacks, machineStatus, machineCount) {
+  const { onAttend, onCancelAttend, onDepart, onComplete } = callbacks || {};
   const el = document.getElementById('kiosk-training-makeups');
   if (!el) return;
   if (!trainingMakeups.length) {
     el.innerHTML = '<p class="buke-empty">今日無培訓補課名單。</p>'; return;
   }
-  el.innerHTML = trainingMakeups.map((m, i) => `
-    <div class="buke-card warn" style="margin-bottom:10px">
+  el.innerHTML = trainingMakeups.map((m, i) => {
+    const attendCount = m.attend_count || 0;
+    const openAttendance = !!m.has_open_attendance;
+    const badgeText = attendCount >= 1 ? '⏳ 尚未補完課' : '⏳ 待補課';
+    const disAttr = openAttendance
+      ? ` disabled title="已到場中，請先按「此堂課尚未補完」或「補課完成」結案"`
+      : '';
+    const disNext = attendCount < 1 ? ' disabled' : '';
+    const openHint = openAttendance ? '<span style="font-size:12px;color:var(--warn-tx)">（已到場中，尚未結案）</span>' : '';
+    return `<div class="buke-card warn" style="margin-bottom:10px">
       <div class="row">
         <div>
           <span class="name">${m.member_name}</span>
           <span class="meta">${m.class_name}</span>
         </div>
-        <span class="buke-badge warn" id="tmk-badge-${i}">⏳ 待補課</span>
+        <span class="buke-badge warn" id="tmk-badge-${i}">${badgeText}</span>
       </div>
       <div class="detail">課程：${m.topic || '—'}　課程日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="buke-select tmk-machine-select" data-machine-select="${i}" style="font-size:13px;padding:4px 8px;min-height:30px;width:auto">${buildMachineOptions(machineStatus, machineCount)}</select>
+        <button class="buke-btn" data-attend-training="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>到場</button>
+        ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-training="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
+        ${openHint}
+        <button class="buke-btn" data-notdone-training="${i}"
+                style="font-size:13px;padding:5px 12px;background:var(--warn-tx);border-color:var(--warn-tx)"${disNext}>
+          此堂課尚未補完
+        </button>
         <button class="buke-btn" data-complete-training="${i}"
-                style="font-size:13px;padding:5px 12px;background:var(--ok-tx);border-color:var(--ok-tx)">
-          完成
+                style="font-size:13px;padding:5px 12px;background:var(--ok-tx);border-color:var(--ok-tx)"${disNext}>
+          補課完成
         </button>
         <span id="tmk-msg-${i}" style="font-size:13px"></span>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-attend-training]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.attendTraining);
+      const msg = document.getElementById(`tmk-msg-${i}`);
+      const machineSel = el.querySelector(`[data-machine-select="${i}"]`);
+      const machineNumber = machineSel && machineSel.value ? Number(machineSel.value) : null;
+      btn.disabled = true; msg.textContent = '記錄中…';
+      try {
+        await onAttend(trainingMakeups[i].training_makeup_id, machineNumber);
+        msg.textContent = '✅ 已記錄到場'; msg.style.color = 'var(--ok-tx)';
+        const card = btn.closest('.buke-card');
+        card.querySelector('[data-notdone-training]')?.removeAttribute('disabled');
+        card.querySelector('[data-complete-training]')?.removeAttribute('disabled');
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-cancelattend-training]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.cancelattendTraining);
+      const msg = document.getElementById(`tmk-msg-${i}`);
+      btn.disabled = true; msg.textContent = '取消中…';
+      try {
+        await onCancelAttend(trainingMakeups[i].training_makeup_id);
+        msg.textContent = '✅ 已取消到場'; msg.style.color = 'var(--ok-tx)';
+        const card = btn.closest('.buke-card');
+        card.querySelector('[data-attend-training]')?.removeAttribute('disabled');
+        card.querySelector('[data-notdone-training]')?.setAttribute('disabled', 'disabled');
+        card.querySelector('[data-complete-training]')?.setAttribute('disabled', 'disabled');
+        btn.remove();
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-notdone-training]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.notdoneTraining);
+      const msg = document.getElementById(`tmk-msg-${i}`);
+      btn.disabled = true;
+      msg.textContent = '記錄中…'; msg.style.color = 'var(--muted)';
+      try {
+        await onDepart(trainingMakeups[i].training_makeup_id);
+        msg.textContent = '✅ 已確認，尚未補完，下次再處理';
+        msg.style.color = 'var(--ok-tx)';
+        btn.closest('.buke-card').style.display = 'none';
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
+    });
+  });
 
   el.querySelectorAll('[data-complete-training]').forEach(btn => {
     btn.addEventListener('click', async () => {

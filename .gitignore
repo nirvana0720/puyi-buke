@@ -20,3 +20,6 @@ iconverr.txt
 
 # 本機開發用（不影響部署，但無需進版控）
 node_modules/
+
+# 測試專案的真實憑證（URL/anon key），跟 config/config.js 同樣道理不進 repo
+test/config.json
