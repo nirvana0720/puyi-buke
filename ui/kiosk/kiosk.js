@@ -312,11 +312,11 @@ function todayStr() {
       window.KioskAlerts.renderTodayRegistrations(regs, {
         onCancelMakeup: async (makeupId) => {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
-          await loadAlertsAndRegistrations();
+          await loadDay(datePicker.value);
         },
         onCancelTransfer: async (transferId) => {
           await kioskCancelTransfer(sb, staff.staff_id, transferId);
-          await loadAlertsAndRegistrations();
+          await loadDay(datePicker.value);
         },
       });
     } catch (_) {}

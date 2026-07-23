@@ -1,11 +1,13 @@
-補課/調課總覽：缺課日期下拉排除已補、依模式排除逾期/未逾期
+義工櫃台：編輯補課排除逾期/占用堂次、確認框改善、取消登記後清單連動刷新（重構52/52b/52c）
 
-- 問題：良師父回報編輯補課紀錄時，「缺課日期」下拉會列出已超過 40 天補課期限、
-  甚至已有其他補課登記的舊缺堂（例如已過期的 5/6、6/10）
-- ui/admin/panel_makeup_overview.js 的 _loadAbsencesInto 加 opts 參數
-  （excludeMakeupId／onlyOverdue），平行查 settings.makeup_deadline_days 與該學員的
-  makeups 清單，過濾掉已有其他補課登記、以及依模式排除已逾期或未逾期的缺堂；
-  編輯中那筆自己的缺課日永遠保留
-- toggleEditMakeup 兩處呼叫加 excludeMakeupId；panel_makeup_late.js（逾期補課登記
-  頁籤）呼叫加 onlyOverdue: true，讓一般編輯/登記排除逾期缺堂、逾期頁籤只顯示逾期缺堂
-- 純前端，無 SQL 異動
+- kiosk_edit_makeup（後端已補逾期檢查，隨 SQL 部署，不在本次前端範圍）
+- toggleEditMakeupForm：編輯補課登記的「缺課堂次」下拉排除已逾期、已被其他登記占用的堂次
+  （正在編輯的這一堂本身仍保留可選）
+- renderMakeupRegisterForm：新增補課登記時，已登記過的缺課 checkbox 改為 disabled，
+  避免不小心勾選、被 register_makeup 的 ON CONFLICT 靜默覆蓋原本登記內容
+- 新增 kioskInlineConfirm（畫面內確認框，取代瀏覽器原生 confirm()）：起因是義工取消登記時
+  confirm() 彈窗容易按太快漏按確定，以為取消成功、資料其實沒刪掉。套用到「今日補課」清單、
+  「到場提醒/未到場」清單、「今日登記清單」三處的取消登記/取消到場按鈕
+- loadAlertsAndRegistrations 的 onCancelMakeup／onCancelTransfer：改呼叫 loadDay() 取代單純呼叫
+  自己，讓「今日登記清單」取消後「今日補課」清單也會跟著連動刷新，不用手動整頁重新整理
+- 純前端，本次無新增 SQL 異動（kiosk_edit_makeup 的逾期檢查等 SQL 已於稍早單獨部署到 Supabase）
