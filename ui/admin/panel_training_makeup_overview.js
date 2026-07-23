@@ -1,8 +1,10 @@
-// 職責：培訓補課總覽——管理員跨班督看精舍培訓課程（training_classes/training_sessions）
+// 職責：培訓補課總覽——管理員督看精舍培訓課程（training_classes/training_sessions）
 // 的補課登記狀態，比照 panel_makeup_overview.js 結構，資料表換成 training_makeups。
 // training_makeups 沒有 deadline_date/earliest_date，沒有「逾期」概念，畫面不做逾期篩選/摘要。
 // 完成／取消完成／刪除到場紀錄直接 .update()/.delete()（RLS 已開放 authenticated），不走 RPC。
-// inline confirm／分組摺疊都直接呼叫 window.PanelMakeupOverview 匯出的共用函式，不複製一份。
+// inline confirm 直接呼叫 window.PanelMakeupOverview 匯出的共用函式，不複製一份；
+// 分組摺疊改成依「個別堂次」分組（重構57），不沿用 renderGroupedByClass（那支是依班別
+// 分組，培訓課是以堂次為單位在運作，同一班不同堂次可能是不同法師負責，混在一起看不出用途）。
 
 'use strict';
 
@@ -115,7 +117,36 @@
     if (!filtered.length) {
       listEl.innerHTML = '<p class="buke-empty">沒有符合的紀錄。</p>'; return;
     }
-    window.PanelMakeupOverview.renderGroupedByClass(listEl, filtered, _tmBuildCard, container);
+    _tmRenderGroupedBySession(listEl, filtered, container);
+  }
+
+  /** 依「個別堂次」分組摺疊（<details> 預設展開）：培訓課是以堂次為單位在運作，
+   *  同一培訓班不同堂次可能是不同法師負責，不適合像禪修班補課那樣依班別混在一起看。
+   *  分組 key 用 training_session_ref；標題「培訓班名稱｜課程主題（課程日期）」；
+   *  群組依課程日期新到舊排序（比照補課/調課總覽新到舊的習慣，不用字串字母排序）。 */
+  function _tmRenderGroupedBySession(listEl, rows, container) {
+    const groups = new Map(); // training_session_ref → { rows, className, topic, date }
+    rows.forEach(r => {
+      const key = r.training_session_ref;
+      if (!groups.has(key)) {
+        groups.set(key, { rows: [], className: r._class_name, topic: r._topic, date: r._session_date });
+      }
+      groups.get(key).rows.push(r);
+    });
+    [...groups.keys()]
+      .sort((a, b) => (groups.get(b).date || '').localeCompare(groups.get(a).date || ''))
+      .forEach(key => {
+        const g = groups.get(key);
+        const details = document.createElement('details');
+        details.open = true;
+        details.style.marginBottom = '10px';
+        const summary = document.createElement('summary');
+        summary.style.cssText = 'cursor:pointer;font-weight:500;padding:6px 0';
+        summary.textContent = `${g.className}｜${g.topic || '（無主題）'}（${g.date}）（${g.rows.length} 筆）`;
+        details.appendChild(summary);
+        g.rows.forEach(r => details.appendChild(_tmBuildCard(r, container)));
+        listEl.appendChild(details);
+      });
   }
 
   // ── 培訓補課卡片 ────────────────────────────────────────────

@@ -131,6 +131,16 @@ async function _renderClasses(sb, container) {
       }
       btn.disabled = true;
       try {
+        // training_makeup_attendances.training_makeup_ref 是 ON DELETE SET NULL，不會跟著
+        // training_classes → training_sessions → training_makeups 的 CASCADE 一起清掉，
+        // 刪班別前先手動清這個班底下所有堂次的到場紀錄，避免留下孤兒
+        const { data: sesRows } = await sb.from('training_sessions').select('id').eq('class_ref', id);
+        const sesIds = (sesRows || []).map(r => r.id);
+        if (sesIds.length) {
+          const { data: tmRows } = await sb.from('training_makeups').select('id').in('training_session_ref', sesIds);
+          const tmIds = (tmRows || []).map(r => r.id);
+          if (tmIds.length) await sb.from('training_makeup_attendances').delete().in('training_makeup_ref', tmIds);
+        }
         const { error: err } = await sb.from('training_classes').delete().eq('id', id);
         if (err) throw new Error(err.message);
         _renderClasses(sb, container);
@@ -282,6 +292,12 @@ async function _renderSessions(sb, container, classId, className) {
       }
       btn.disabled = true;
       try {
+        // training_makeup_attendances.training_makeup_ref 是 ON DELETE SET NULL，
+        // 刪堂次前先清掉這個堂次底下的到場紀錄，避免留下孤兒
+        const { data: tmRows } = await sb.from('training_makeups').select('id').eq('training_session_ref', id);
+        const tmIds = (tmRows || []).map(r => r.id);
+        if (tmIds.length) await sb.from('training_makeup_attendances').delete().in('training_makeup_ref', tmIds);
+
         const { error: err } = await sb.from('training_sessions').delete().eq('id', id);
         if (err) throw new Error(err.message);
         _renderSessions(sb, container, classId, className);

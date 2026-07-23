@@ -84,12 +84,14 @@
       <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
+        <button id="mo-wipe-class" class="buke-btn buke-btn-danger" style="font-size:14px;padding:6px 14px;min-height:36px;display:none"></button>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="mo-add-makeup" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登補課</button>
         <button id="mo-print" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🖶 列印</button>
       </div>
       <div id="mo-add-form" style="margin-bottom:12px"></div>
+      <div id="mo-wipe-area" style="margin-bottom:12px"></div>
       <div id="mo-urgent" style="margin-bottom:14px"></div>
       <div id="mo-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
       <div id="mo-list"></div>`;
@@ -103,7 +105,12 @@
       window.PanelMakeupLate.loadMakeupLatePanel(_sb, container);
     });
     container.querySelector('#mo-search').addEventListener('input', e => { _searchName = e.target.value.trim(); applyAndRender(container); });
-    container.querySelector('#mo-class').addEventListener('change',  e => { _filterClass  = e.target.value; applyAndRender(container); });
+    container.querySelector('#mo-class').addEventListener('change',  e => {
+      _filterClass = e.target.value;
+      container.querySelector('#mo-wipe-area').innerHTML = '';
+      _updateWipeBtn(container);
+      applyAndRender(container);
+    });
     container.querySelector('#mo-status').addEventListener('change', e => { _filterStatus = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-refresh').addEventListener('click', async () => {
       container.querySelector('#mo-list').innerHTML = '<p class="buke-empty">載入中…</p>';
@@ -111,6 +118,97 @@
     });
     container.querySelector('#mo-add-makeup').addEventListener('click', () => showAddMakeupForm(container));
     container.querySelector('#mo-print').addEventListener('click', () => window.print());
+    container.querySelector('#mo-wipe-class').addEventListener('click', () => showWipeClassConfirm(container));
+    _updateWipeBtn(container);
+  }
+
+  /** 「清空此班補課/調課資料」按鈕：只在選到特定班別時顯示 */
+  function _updateWipeBtn(container) {
+    const btn = container.querySelector('#mo-wipe-class');
+    if (!btn) return;
+    if (_filterClass) {
+      btn.style.display = '';
+      btn.textContent = `🗑️ 清空「${_filterClass}」補課/調課資料`;
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  /** 輸入班別名稱完整比對才能送出，避免手滑誤刪整班資料 */
+  function showWipeClassConfirm(container) {
+    const area = container.querySelector('#mo-wipe-area');
+    if (area.innerHTML) { area.innerHTML = ''; return; }
+    const className = _filterClass;
+    if (!className) return;
+    area.innerHTML = `
+      <div class="buke-card" style="margin-bottom:12px;border-color:var(--danger-tx)">
+        <div style="font-weight:500;margin-bottom:8px;color:var(--danger-tx)">⚠️ 清空「${className}」補課/調課資料</div>
+        <p style="font-size:14px;margin-bottom:10px">
+          會刪除「${className}」這個班所有的補課登記、（此班為來源班的）調課登記，以及對應的到場紀錄。
+          不影響其他班別，也不會動到出缺勤與學員資料本身。<b>刪除後無法復原</b>，請確認這一期已經結束、不再需要這些資料。
+        </p>
+        <p style="font-size:14px;margin-bottom:6px">請輸入班別名稱「${className}」以確認清空：</p>
+        <input class="buke-input f-wipe-confirm" style="font-size:14px;width:100%;margin-bottom:8px" placeholder="${className}">
+        <div style="display:flex;gap:8px">
+          <button class="buke-btn buke-btn-danger btn-wipe-ok" disabled style="font-size:13px;padding:4px 14px;min-height:30px">確定清空</button>
+          <button class="buke-btn buke-btn-ghost btn-wipe-cancel" style="font-size:13px;padding:4px 14px;min-height:30px">取消</button>
+        </div>
+        <div class="wipe-msg" style="font-size:13px;margin-top:8px"></div>
+      </div>`;
+    const input = area.querySelector('.f-wipe-confirm');
+    const okBtn = area.querySelector('.btn-wipe-ok');
+    input.addEventListener('input', () => { okBtn.disabled = input.value !== className; });
+    area.querySelector('.btn-wipe-cancel').addEventListener('click', () => { area.innerHTML = ''; });
+    okBtn.addEventListener('click', () => runWipeClass(container, className, area));
+  }
+
+  async function runWipeClass(container, className, area) {
+    const msgEl = area.querySelector('.wipe-msg');
+    const okBtn = area.querySelector('.btn-wipe-ok');
+    okBtn.disabled = true;
+    msgEl.textContent = '清空中…';
+    try {
+      const classRef = _makeups.find(r => r._class_name === className)?._class_ref;
+      if (!classRef) throw new Error('找不到對應班別，請重新整理後再試');
+
+      const { data: sessRows, error: sessErr } = await _sb.from('sessions').select('id').eq('class_ref', classRef);
+      if (sessErr) throw new Error(sessErr.message);
+      const sessIds = (sessRows || []).map(s => s.id);
+
+      let muDeleted = [], trDeleted = [];
+      if (sessIds.length) {
+        const { data: muRows, error: muErr } = await _sb.from('makeups').select('id').in('session_ref', sessIds);
+        if (muErr) throw new Error(muErr.message);
+        const muIds = (muRows || []).map(m => m.id);
+
+        // 先刪到場紀錄再刪 makeups 本身，makeup_attendances.makeup_ref 是 ON DELETE SET NULL
+        // 不會自動清掉，直接刪 makeups 會留下孤兒到場紀錄
+        if (muIds.length) {
+          const { error: attErr } = await _sb.from('makeup_attendances').delete().in('makeup_ref', muIds);
+          if (attErr) throw new Error(attErr.message);
+        }
+
+        const { data: muDel, error: muDelErr } = await _sb.from('makeups').delete().in('session_ref', sessIds).select('id');
+        if (muDelErr) throw new Error(muDelErr.message);
+        muDeleted = muDel || [];
+
+        // 只刪這個班身為「調班來源班」的調班紀錄；別班調來這個班的（to_class_ref 是這個班）不算
+        const { data: trDel, error: trDelErr } = await _sb.from('transfers').delete().in('from_session_ref', sessIds).select('id');
+        if (trDelErr) throw new Error(trDelErr.message);
+        trDeleted = trDel || [];
+      }
+
+      _filterClass = '';
+      await fetchMakeups();
+      renderShell(container);
+      applyAndRender(container);
+      const countEl = container.querySelector('#mo-count');
+      if (countEl) countEl.insertAdjacentHTML('beforebegin',
+        `<div style="font-size:14px;color:var(--ok-tx);margin-bottom:8px">✅ 已清空「${className}」，共刪除 ${muDeleted.length} 筆補課登記、${trDeleted.length} 筆調課登記</div>`);
+    } catch (e) {
+      msgEl.textContent = `❌ ${e.message}`;
+      okBtn.disabled = false;
+    }
   }
 
   /** ⏰ 即將逾期／已逾期補課摘要（跨班，比照學長/班長看板 urgentMakeups 邏輯：
