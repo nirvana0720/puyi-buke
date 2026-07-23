@@ -111,14 +111,6 @@ function renderAttendanceAlerts(alerts, callbacks) {
     });
   });
 
-  function lockNoShowRow(i) {
-    const row = el.querySelector(`[data-noshow-row="${i}"]`);
-    row?.querySelectorAll('button').forEach(b => b.setAttribute('disabled', 'disabled'));
-  }
-  function unlockNoShowRow(i) {
-    el.querySelectorAll(`[data-noshow-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
-  }
-
   el.querySelectorAll('[data-noshow-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
       const i = Number(btn.dataset.noshowEdit);
@@ -131,20 +123,13 @@ function renderAttendanceAlerts(alerts, callbacks) {
   });
 
   el.querySelectorAll('[data-noshow-cancel]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const i = Number(btn.dataset.noshowCancel);
-      const msg = el.querySelector(`[data-noshow-msg="${i}"]`);
-      if (!confirm(`確定要取消 ${noShow[i].member_name} 這筆補課登記嗎？`)) return;
-      lockNoShowRow(i);
-      msg.textContent = '處理中…'; msg.style.color = 'var(--muted)';
-      try {
+    btn.addEventListener('click', () => {
+      const i   = Number(btn.dataset.noshowCancel);
+      const row = el.querySelector(`[data-noshow-row="${i}"]`);
+      window.KioskRender.kioskInlineConfirm(row, `確定要取消 ${noShow[i].member_name} 這筆補課登記嗎？`, async () => {
         await onCancelReg(noShow[i].makeup_id);
-        msg.textContent = '✅ 已取消登記'; msg.style.color = 'var(--ok-tx)';
-        setTimeout(() => { el.querySelector(`[data-noshow-row="${i}"]`)?.remove(); }, 800);
-      } catch (e) {
-        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
-        unlockNoShowRow(i);
-      }
+        row.remove();
+      });
     });
   });
 }
@@ -194,32 +179,24 @@ function renderTodayRegistrations(regs, callbacks) {
   `;
 
   el.querySelectorAll('[data-cancel-reg-makeup]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.dataset.cancelRegMakeup);
-      if (!confirm('確定要取消這筆補課登記嗎？')) return;
-      btn.disabled = true; btn.textContent = '處理中…';
-      try {
+    btn.addEventListener('click', () => {
+      const id  = Number(btn.dataset.cancelRegMakeup);
+      const row = btn.closest('div');
+      window.KioskRender.kioskInlineConfirm(row, '確定要取消這筆補課登記嗎？', async () => {
         await onCancelMakeup(id);
-        btn.closest('div').style.display = 'none';
-      } catch (e) {
-        alert(`❌ ${e.message}`);
-        btn.disabled = false; btn.textContent = '取消登記';
-      }
+        row.style.display = 'none';
+      });
     });
   });
 
   el.querySelectorAll('[data-cancel-reg-transfer]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.dataset.cancelRegTransfer);
-      if (!confirm('確定要取消這筆調班登記嗎？')) return;
-      btn.disabled = true; btn.textContent = '處理中…';
-      try {
+    btn.addEventListener('click', () => {
+      const id  = Number(btn.dataset.cancelRegTransfer);
+      const row = btn.closest('div');
+      window.KioskRender.kioskInlineConfirm(row, '確定要取消這筆調班登記嗎？', async () => {
         await onCancelTransfer(id);
-        btn.closest('div').style.display = 'none';
-      } catch (e) {
-        alert(`❌ ${e.message}`);
-        btn.disabled = false; btn.textContent = '取消登記';
-      }
+        row.style.display = 'none';
+      });
     });
   });
 }

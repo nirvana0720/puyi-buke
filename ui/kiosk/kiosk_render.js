@@ -161,6 +161,30 @@ function updateMachineOptions(machineStatus) {
   });
 }
 
+// ── 畫面內確認框（取代瀏覽器原生 confirm()；2026-07-23 新增，起因：義工按取消登記時
+// confirm() 彈窗按太快漏按確定，資料其實沒刪掉但畫面清單還在，義工誤以為取消成功。
+// 比照 ui/admin/panel_makeup_overview.js 的 inlineConfirm，掛在傳入的容器內顯示確定/取消。
+function kioskInlineConfirm(container, msg, onOk) {
+  let area = container.querySelector('.ic-area');
+  if (!area) {
+    area = document.createElement('div');
+    area.className = 'ic-area';
+    area.style.cssText = 'margin-top:8px;padding:10px;background:var(--bg);border-radius:var(--r-md)';
+    container.appendChild(area);
+  }
+  area.innerHTML = `<p style="font-size:14px;margin-bottom:8px">${msg}</p>
+    <div style="display:flex;gap:8px">
+      <button class="buke-btn ic-ok" style="font-size:13px;padding:4px 12px;min-height:30px">確定</button>
+      <button class="buke-btn buke-btn-ghost ic-cancel" style="font-size:13px;padding:4px 12px;min-height:30px">取消</button>
+    </div>
+    <div class="ic-result" style="font-size:13px;margin-top:6px"></div>`;
+  area.querySelector('.ic-ok').onclick = async () => {
+    try { await onOk(); } catch (e) { area.querySelector('.ic-result').textContent = `❌ ${e.message}`; return; }
+    area.innerHTML = '';
+  };
+  area.querySelector('.ic-cancel').onclick = () => { area.innerHTML = ''; };
+}
+
 // ── 今日補課清單 ──────────────────────────────────────────────────
 // callbacks = {onAttend, onDepart, onComplete, onEdit, lookupMember, onCancelAttend, onCancelReg}
 // machineStatus = [{machine_number, member_name}]（今天目前使用中的機台，供下拉選單提示）
@@ -307,20 +331,13 @@ function renderMakeups(makeups, callbacks, machineStatus, machineCount) {
   });
 
   el.querySelectorAll('[data-cancelreg-makeup]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const i   = Number(btn.dataset.cancelregMakeup);
-      const msg = document.getElementById(`mk-msg-${i}`);
-      const ok = confirm(`確定要取消 ${makeups[i].member_name} 這筆補課登記嗎？`);
-      if (!ok) return;
-      btn.disabled = true; msg.textContent = '處理中…';
-      try {
+    btn.addEventListener('click', () => {
+      const i    = Number(btn.dataset.cancelregMakeup);
+      const card = btn.closest('.buke-card');
+      kioskInlineConfirm(card, `確定要取消 ${makeups[i].member_name} 這筆補課登記嗎？`, async () => {
         await onCancelReg(makeups[i].makeup_id);
-        msg.textContent = '✅ 已取消登記'; msg.style.color = 'var(--ok-tx)';
-        btn.closest('.buke-card').style.display = 'none';
-      } catch (e) {
-        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
-        btn.disabled = false;
-      }
+        card.style.display = 'none';
+      });
     });
   });
 }
@@ -375,13 +392,20 @@ function toggleEditMakeupForm(areaId, m, onEdit, lookupMember) {
     try {
       const result = await lookupMember(m.member_id);
       const cls = (result.classes || []).find(c => c.class_name === m.class_name);
-      const absences = cls?.absences || [];
+      const today = new Date().toLocaleDateString('sv-SE');
+      // 排除已被其他登記占用、或已逾期的缺課堂次；正在編輯的這一堂本身要保留（能選回自己）
+      const absences = (cls?.absences || []).filter(a => {
+        if (a.date === m.session_date) return true;
+        if (a.already_registered) return false;
+        if (a.deadline_date && a.deadline_date < today) return false;
+        return true;
+      });
       sessSel.innerHTML = absences.length
         ? absences.map(a => {
             const wk = a.week_num ? ` 第${a.week_num}堂` : '';
             return `<option value="${a.session_ref}"${a.date === m.session_date ? ' selected' : ''}>${wk} ${a.date}</option>`;
           }).join('')
-        : '<option value="">查無缺課堂次</option>';
+        : '<option value="">查無可選缺課堂次</option>';
     } catch (e) {
       sessSel.innerHTML = '<option value="">載入失敗</option>';
     }
@@ -500,15 +524,14 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     if (!cls) { sessWrap.innerHTML = '<span style="color:var(--muted);font-size:14px">請先選擇班別</span>'; return; }
     sessWrap.innerHTML = (cls.absences || []).map(a => {
       const wk = a.week_num ? ` 第${a.week_num}堂` : '';
-      const hint = a.already_registered
+      const disabled = !!a.already_registered;
+      const hint = disabled
         ? (a.attend_count >= 1
             ? `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}，已到 ${a.attend_count} 次，尚未補完課）`
             : `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}）`)
         : '';
-      return `<label style="font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" class="mk-sess-cb" value="${a.session_ref}"
-               data-registered="${a.already_registered ? '1' : ''}"
-               data-planned="${a.planned_date || ''} ${a.planned_slot || ''}"
+      return `<label style="font-size:14px;display:flex;align-items:center;gap:6px;${disabled ? 'cursor:not-allowed;color:var(--muted)' : 'cursor:pointer'}">
+        <input type="checkbox" class="mk-sess-cb" value="${a.session_ref}"${disabled ? ' disabled' : ''}
                data-label="${cls.class_name}${wk} ${a.date}" style="width:18px;height:18px">
         ${cls.class_name}${wk} ${a.date}${hint}
       </label>`;
@@ -545,12 +568,6 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     }
 
     if (blocked) return;
-    const overwriteOnes = checkedBoxes.filter(cb => cb.dataset.registered === '1');
-    if (overwriteOnes.length) {
-      const list = overwriteOnes.map(cb => `${cb.dataset.label}（${cb.dataset.planned}）`).join('、');
-      const ok = confirm(`以下 ${overwriteOnes.length} 堂已登記補課時段：${list}，要覆蓋成新的登記嗎？`);
-      if (!ok) return;
-    }
 
     btn.disabled = true; msg.textContent = '登記中…'; msg.style.color = 'var(--muted)';
     const results = [];
@@ -862,5 +879,5 @@ function renderTodayLog(records) {
 }
 
 if (typeof window !== 'undefined') {
-  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm };
+  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm, kioskInlineConfirm };
 }
