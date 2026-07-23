@@ -183,6 +183,7 @@
       <button class="menu-item" data-panel="makeup-rules">📋 補課規定設定</button>
       <button class="menu-item" data-panel="training">🎓 精舍培訓課程</button>
       <button class="menu-item" data-panel="makeup-overview">📊 補課／調課總覽</button>
+      <button class="menu-item" data-panel="training-makeup-overview">📊 培訓補課總覽</button>
 
       <div class="menu-group-label">各式總表</div>
       <button class="menu-item" data-panel="overview">🗂️ 各班總覽</button>
@@ -209,6 +210,7 @@
 <script src="panel_risk.js"></script>
 <script src="panel_students.js"></script>
 <script src="panel_makeup_overview.js"></script>
+<script src="panel_training_makeup_overview.js"></script>
 <script src="panel_transfer_overview.js"></script>
 <script src="panel_makeup_late.js"></script>
 <script src="panel_import.js"></script>
@@ -281,6 +283,7 @@
     risk:           { title: '結業風險總表', load: (c)       => window.PanelRisk.loadRiskPanel(sb, c)                 },
     students:           { title: '學員總表',      load: (c, opts) => window.PanelStudents.loadStudentsPanel(sb, c, opts)             },
     'makeup-overview':  { title: '補課／調課總覽', load: (c)       => window.PanelMakeupOverview.loadMakeupOverviewPanel(sb, c)           },
+    'training-makeup-overview': { title: '培訓補課總覽', load: (c) => window.PanelTrainingMakeupOverview.loadTrainingMakeupOverviewPanel(sb, c) },
     'import':           { title: '匯入資料',       load: (c) => window.PanelImport.loadImportPanel(sb, c)       },
     'volunteers':       { title: '義工帳號',       load: (c) => window.PanelVolunteers.loadVolunteersPanel(sb, c) },
     'training':         { title: '精舍培訓課程管理', load: (c) => window.PanelTraining.loadTrainingPanel(sb, c) },
