@@ -100,8 +100,27 @@
           }
         });
       }
+
+      const countEl = container.querySelector('#to-count');
+      const originalCountText = countEl ? countEl.textContent : '';
+      if (countEl) {
+        const visibleCount = container.querySelectorAll('.transfer-card').length - hiddenCards.length;
+        countEl.textContent = `日夜補 ${visibleCount} 筆`;
+      }
+
+      const summaryEls = [...container.querySelectorAll('#to-list details > summary')];
+      const originalSummaryTexts = summaryEls.map(s => s.textContent);
+      summaryEls.forEach(summary => {
+        const details = summary.closest('details');
+        const visibleInGroup = details.querySelectorAll('.transfer-card:not(.print-hide-this)').length;
+        summary.textContent = summary.textContent.replace(/\d+(?=\s*筆）)/, String(visibleInGroup));
+      });
+
       window.print();
+
       hiddenCards.forEach(card => card.classList.remove('print-hide-this'));
+      if (countEl) countEl.textContent = originalCountText;
+      summaryEls.forEach((summary, i) => { summary.textContent = originalSummaryTexts[i]; });
     });
   }
 
