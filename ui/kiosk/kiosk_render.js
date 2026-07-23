@@ -745,7 +745,7 @@ function renderTrainingMakeupsToday(trainingMakeups, callbacks, machineStatus, m
       <div class="detail">課程：${m.topic || '—'}　課程日：${m.session_date}　時段：${m.planned_slot || '未填'}　${m.earphone ? '🎧耳機' : ''}${m.note ? `　備註：${m.note}` : ''}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select class="buke-select tmk-machine-select" data-machine-select="${i}" style="font-size:13px;padding:4px 8px;min-height:30px;width:auto">${buildMachineOptions(machineStatus, machineCount)}</select>
-        <button class="buke-btn" data-attend-training="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>到場</button>
+        <button class="buke-btn" data-attend-training="${i}" style="font-size:13px;padding:5px 12px"${disAttr}>出席</button>
         ${openAttendance ? `<button class="buke-btn buke-btn-ghost" data-cancelattend-training="${i}" style="font-size:13px;padding:5px 12px">取消到場</button>` : ''}
         ${openHint}
         <button class="buke-btn" data-notdone-training="${i}"
@@ -770,7 +770,7 @@ function renderTrainingMakeupsToday(trainingMakeups, callbacks, machineStatus, m
       btn.disabled = true; msg.textContent = '記錄中…';
       try {
         await onAttend(trainingMakeups[i].training_makeup_id, machineNumber);
-        msg.textContent = '✅ 已記錄到場'; msg.style.color = 'var(--ok-tx)';
+        msg.textContent = '✅ 已記錄出席'; msg.style.color = 'var(--ok-tx)';
         const card = btn.closest('.buke-card');
         card.querySelector('[data-notdone-training]')?.removeAttribute('disabled');
         card.querySelector('[data-complete-training]')?.removeAttribute('disabled');
