@@ -90,9 +90,18 @@
     container.querySelector('#to-add').addEventListener('click', () => showAddTransferForm(container));
     container.querySelector('#to-print').addEventListener('click', () => {
       const onlyUnupdated = container.querySelector('#to-print-filter').checked;
-      if (onlyUnupdated) document.body.classList.add('print-hide-ctis-done');
+      const hiddenCards = [];
+      if (onlyUnupdated) {
+        container.querySelectorAll('.transfer-card').forEach(card => {
+          const ctisBox = card.querySelector('.f-ctis');
+          if (ctisBox && ctisBox.checked) {
+            card.classList.add('print-hide-this');
+            hiddenCards.push(card);
+          }
+        });
+      }
       window.print();
-      document.body.classList.remove('print-hide-ctis-done');
+      hiddenCards.forEach(card => card.classList.remove('print-hide-this'));
     });
   }
 
