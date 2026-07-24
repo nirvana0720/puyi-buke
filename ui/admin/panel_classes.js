@@ -212,7 +212,7 @@
       try {
         const url = `${apiBase}/meditation/api/kiosk/class_attend_records`
           + `?classDate=${dateStr}&classId=${candidateId}&includes=${encodeURIComponent('className')}`;
-        const res  = await fetch(url, { credentials: 'include' });
+        const res  = await fetch(url);
         const json = await res.json();
         if (json.errCode === 200 && Array.isArray(json.items) && json.items.length > 0) {
           found.push({ classId: candidateId, className: json.items[0].className || '', attendCount: json.items.length });
@@ -228,7 +228,7 @@
       const unitId  = (typeof CONFIG !== 'undefined' && CONFIG.UNIT_ID)  || 'UNIT01071';
       const apiBase = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE) || 'https://zenclass.ctcm.org.tw';
       const url = `${apiBase}/meditation/api/kiosk/class_date_infos?unitId=${unitId}&classDate=${dateStr}`;
-      const res  = await fetch(url, { credentials: 'include' });
+      const res  = await fetch(url);
       const json = await res.json();
       if (json.errCode !== 200) return [];
       return json.items || [];
