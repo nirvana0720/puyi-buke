@@ -23,10 +23,13 @@
 ────────────────────────────────────────
 步驟 2：確認設定
 ────────────────────────────────────────
-用記事本打開 config.json，確認：
-  UNIT_ID  = 這個精舍的單位代碼（普宜精舍是 UNIT01071；別的精舍要改成自己的）
-其餘（金鑰、網址）通常不用動。
-※ 要部署到別的精舍時，照 config.example.json 的格式改 config.json 即可。
+每個精舍是各自獨立的 Supabase 專案，不是共用同一個。用記事本打開 config.json，
+確認以下三項都已經是「這台電腦所屬精舍」自己的值：
+  SUPABASE_URL      = 這個精舍自己 Supabase 專案的網址
+  SUPABASE_ANON_KEY = 這個精舍自己的 Publishable key
+  UNIT_ID           = 這個精舍的單位代碼（普宜精舍是 UNIT01071）
+三項都要對，不能只改 UNIT_ID。
+※ 要部署到別的精舍時，照 config.example.json 的格式，把這三項填成該精舍自己的值即可。
 
 ────────────────────────────────────────
 步驟 3：部署到「要跑同步」的那台電腦
@@ -43,5 +46,6 @@
 【疑難排解】
 - 雙擊 test 沒反應或報缺少 DLL：該 Win7 可能要先裝 Universal C Runtime（KB2999226）。
 - 想看歷史紀錄：本資料夾的 sync_log.txt 有每次執行的完整結果。
-- 換精舍 / 換電腦：整個資料夾複製過去，改 config.json 的 UNIT_ID，重跑 setup_schedule.bat。
+- 換精舍 / 換電腦：整個資料夾複製過去，把 config.json 的 SUPABASE_URL／SUPABASE_ANON_KEY／
+  UNIT_ID 三項都改成該精舍自己的值，重跑 setup_schedule.bat。
 - 手動補抓過去日期：仍可用原本的書籤（bookmarklet），本工具不影響書籤。

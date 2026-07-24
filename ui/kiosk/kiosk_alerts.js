@@ -12,20 +12,27 @@ function _fmtTime(ts) {
 }
 
 // ── B. 到場提醒 ──────────────────────────────────────────────────
-// callbacks = {onDepart, onComplete, onEdit, onCancelReg, lookupMember}
+// callbacks = {onDepart, onComplete, onEdit, onCancelReg, lookupMember,
+//              onTransferMarkAbsent, onTransferCancel}
 // onDepart/onComplete：結案逾時未結案的到場記錄；跟卡片清單共用同兩支 RPC，只認 makeup_id，
 //   不挑「目前選的日期」，所以就算逾時記錄的補課日不是今天也能直接結案
 // onEdit/onCancelReg/lookupMember：完全沒到場那組的「編輯」「取消登記」，跟今日補課清單共用
 //   同一套 kiosk_edit_makeup／kiosk_cancel_makeup／編輯表單（見 kiosk_render.js toggleEditMakeupForm）
+// onTransferMarkAbsent/onTransferCancel：2026-07-24 新增，調班版本的「完全沒到場」警示，
+//   跟補課的 no_show 是同一層級的區塊，但調班沒有像補課那樣的編輯表單，直接給「標未到」
+//   「取消登記」兩個按鈕，跟今日調班清單共用同兩支 RPC（kiosk_transfer_mark_absent／
+//   kiosk_cancel_transfer）
 function renderAttendanceAlerts(alerts, callbacks) {
-  const { onDepart, onComplete, onEdit, onCancelReg, lookupMember } = callbacks || {};
+  const { onDepart, onComplete, onEdit, onCancelReg, lookupMember,
+          onTransferMarkAbsent, onTransferCancel } = callbacks || {};
   const el = document.getElementById('kiosk-attendance-alerts');
   if (!el) return;
 
-  const overdue = alerts?.overdue_attendance || [];
-  const noShow  = alerts?.no_show || [];
+  const overdue      = alerts?.overdue_attendance || [];
+  const noShow       = alerts?.no_show || [];
+  const transferNoShow = alerts?.transfer_no_show || [];
 
-  if (!overdue.length && !noShow.length) { el.innerHTML = ''; return; }
+  if (!overdue.length && !noShow.length && !transferNoShow.length) { el.innerHTML = ''; return; }
 
   const overdueHtml = overdue.length ? `
     <div class="buke-section-block care">
@@ -70,7 +77,24 @@ function renderAttendanceAlerts(alerts, callbacks) {
         </div>`).join('')}
     </div>` : '';
 
-  el.innerHTML = overdueHtml + noShowHtml;
+  const transferNoShowHtml = transferNoShow.length ? `
+    <div class="buke-section-block care">
+      <div class="buke-section">⚠️ 已登記調班但上課時間已過、完全沒有標記出席（${transferNoShow.length} 筆）</div>
+      ${transferNoShow.map((t, i) => `
+        <div class="alert-transfer-noshow-row" data-transfer-noshow-row="${i}" style="font-size:14px;padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>
+            <span style="font-weight:500">${t.member_name}</span>
+            <span style="color:var(--muted)">　${t.from_class_name} → ${t.to_class_name}　去上課日：${t.to_date}</span>
+          </span>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="buke-btn buke-btn-ghost" data-transfer-noshow-absent="${i}" style="font-size:12px;padding:4px 10px">標未到</button>
+            <button class="buke-btn buke-btn-ghost" data-transfer-noshow-cancel="${i}" style="font-size:12px;padding:4px 10px">取消登記</button>
+            <span class="alert-transfer-noshow-msg" data-transfer-noshow-msg="${i}" style="font-size:12px"></span>
+          </span>
+        </div>`).join('')}
+    </div>` : '';
+
+  el.innerHTML = overdueHtml + noShowHtml + transferNoShowHtml;
 
   function lockRow(i) {
     const row = el.querySelector(`[data-overdue-row="${i}"]`);
@@ -128,6 +152,39 @@ function renderAttendanceAlerts(alerts, callbacks) {
       const row = el.querySelector(`[data-noshow-row="${i}"]`);
       window.KioskRender.kioskInlineConfirm(row, `確定要取消 ${noShow[i].member_name} 這筆補課登記嗎？`, async () => {
         await onCancelReg(noShow[i].makeup_id);
+        row.remove();
+      });
+    });
+  });
+
+  function lockTransferNoShowRow(i) {
+    const row = el.querySelector(`[data-transfer-noshow-row="${i}"]`);
+    row?.querySelectorAll('button').forEach(b => b.setAttribute('disabled', 'disabled'));
+  }
+
+  el.querySelectorAll('[data-transfer-noshow-absent]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i   = Number(btn.dataset.transferNoshowAbsent);
+      const msg = el.querySelector(`[data-transfer-noshow-msg="${i}"]`);
+      lockTransferNoShowRow(i);
+      msg.textContent = '記錄中…'; msg.style.color = 'var(--muted)';
+      try {
+        await onTransferMarkAbsent(transferNoShow[i].transfer_id);
+        msg.textContent = '✅ 已標未到'; msg.style.color = 'var(--ok-tx)';
+        setTimeout(() => { el.querySelector(`[data-transfer-noshow-row="${i}"]`)?.remove(); }, 800);
+      } catch (e) {
+        msg.textContent = `❌ ${e.message}`; msg.style.color = 'var(--danger-tx)';
+        el.querySelectorAll(`[data-transfer-noshow-row="${i}"] button`).forEach(b => b.removeAttribute('disabled'));
+      }
+    });
+  });
+
+  el.querySelectorAll('[data-transfer-noshow-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i   = Number(btn.dataset.transferNoshowCancel);
+      const row = el.querySelector(`[data-transfer-noshow-row="${i}"]`);
+      window.KioskRender.kioskInlineConfirm(row, `確定要取消 ${transferNoShow[i].member_name} 這筆調班登記嗎？`, async () => {
+        await onTransferCancel(transferNoShow[i].transfer_id);
         row.remove();
       });
     });

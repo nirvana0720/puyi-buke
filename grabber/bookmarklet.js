@@ -58,7 +58,7 @@
 
   let targetClass = classes[0];
   if (classes.length > 1) {
-    const options = classes.map((c, i) => `${i + 1}. ${c.class_name}`).join('\n');
+    const options = classes.map((c, i) => `${i + 1}. ${c.class_name}（${c.status}）`).join('\n');
     const pick = prompt(`[補課系統] ${dateStr} 要同步哪個班？請輸入編號：\n${options}`);
     const idx = parseInt(pick, 10) - 1;
     if (isNaN(idx) || idx < 0 || idx >= classes.length) {

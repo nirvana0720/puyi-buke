@@ -165,7 +165,7 @@ async function kioskEditTransferNote(sb, staffId, transferId, note) {
 async function kioskGetAttendanceAlerts(sb, staffId) {
   const { data, error } = await sb.rpc('kiosk_get_attendance_alerts', { p_staff_id: staffId });
   if (error) throw new Error(error.message);
-  return data || { overdue_attendance: [], no_show: [] };
+  return data || { overdue_attendance: [], no_show: [], transfer_no_show: [] };
 }
 
 async function kioskMakeupCancelAttend(sb, staffId, makeupId) {
@@ -176,6 +176,13 @@ async function kioskMakeupCancelAttend(sb, staffId, makeupId) {
 
 async function kioskTransferResetToRegistered(sb, staffId, transferId) {
   const { data, error } = await sb.rpc('kiosk_transfer_reset_to_registered', { p_staff_id: staffId, p_transfer_id: transferId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// 2026-07-24 新增：對應「到場提醒」調班未到警示區塊的「標未到」按鈕
+async function kioskTransferMarkAbsent(sb, staffId, transferId) {
+  const { data, error } = await sb.rpc('kiosk_transfer_mark_absent', { p_staff_id: staffId, p_transfer_id: transferId });
   if (error) throw new Error(error.message);
   return data;
 }
@@ -305,6 +312,13 @@ function todayStr() {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
         },
         lookupMember: async (memberCode) => kioskLookupMember(sb, staff.staff_id, memberCode),
+        onTransferMarkAbsent: async (transferId) => {
+          await kioskTransferMarkAbsent(sb, staff.staff_id, transferId);
+          loadDay(datePicker.value); // 讓「今日調班」卡片同步顯示最新的未到狀態
+        },
+        onTransferCancel: async (transferId) => {
+          await kioskCancelTransfer(sb, staff.staff_id, transferId);
+        },
       });
     } catch (_) {}
     try {

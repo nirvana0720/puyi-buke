@@ -2252,6 +2252,11 @@ END;
 $$;
 
 -- ── 7.10 稽核比對／首頁警示／MANUAL 班別綁定 ───────────────
+-- 2026-07-24：原本連「已結業」也一起回傳，理由是讓 grabber/bookmarklet.js（一般同步）
+-- 能回頭補抓已結業班漏掉的刷卡資料——但這只是當初的推測，開發紀錄裡沒有真的發生過一次。
+-- 實際代價是：已結業班永遠留在清單裡、越積越多，且曾發生舊 MANUAL 佔位班已結業封存、
+-- 新真代碼班同名進行中，兩者在選單裡撞名選錯（見 補課系統_開發紀錄.md 同日條目）。
+-- 改回只回傳「進行中」，真的要補已結業班的資料，去後台「班別設定」暫時改回進行中即可。
 CREATE OR REPLACE FUNCTION list_audit_classes()
 RETURNS jsonb
 LANGUAGE sql
@@ -2273,7 +2278,7 @@ AS $$
     ) ORDER BY class_name
   ), '[]'::jsonb)
   FROM classes
-  WHERE status IN ('進行中', '已結業');
+  WHERE status = '進行中';
 $$;
 
 CREATE OR REPLACE FUNCTION get_class_audit_snapshot(p_class_ref bigint)
@@ -3359,6 +3364,30 @@ BEGIN
         AND NOT EXISTS (
           SELECT 1 FROM makeup_attendances ma2 WHERE ma2.makeup_ref = mk.id
         )
+    ),
+    -- 2026-07-24 新增：已登記日↔夜間調班補課、目標班上課時間已過（緩衝 1 小時），
+    -- 狀態仍是「已登記」（沒人標已出席也沒人標未到）。時間判斷比照 kiosk_transfer_attend
+    -- 算遲到用的同一組欄位（t.to_date + tc.start_time），跟補課 no_show 用的緩衝一致（1 小時）。
+    'transfer_no_show', (
+      SELECT COALESCE(jsonb_agg(
+        jsonb_build_object(
+          'transfer_id',     t.id,
+          'member_name',     m.name,
+          'from_class_name', fc.class_name,
+          'to_class_name',   tc.class_name,
+          'to_date',         t.to_date,
+          'note',            t.note
+        ) ORDER BY t.to_date
+      ), '[]'::jsonb)
+      FROM transfers t
+      JOIN members  m  ON m.id  = t.member_ref
+      JOIN sessions s  ON s.id  = t.from_session_ref
+      JOIN classes  fc ON fc.id = s.class_ref
+      JOIN classes  tc ON tc.id = t.to_class_ref
+      WHERE t.status = '已登記'
+        AND tc.start_time IS NOT NULL
+        AND (now() AT TIME ZONE 'Asia/Taipei') - interval '1 hour'
+              >= (t.to_date + tc.start_time)::timestamp
     )
   );
 END;
@@ -3520,6 +3549,28 @@ BEGIN
   END IF;
 
   DELETE FROM transfers WHERE id = p_transfer_id;
+
+  RETURN '{"ok":true}'::jsonb;
+END;
+$$;
+
+-- kiosk_transfer_mark_absent（2026-07-24 新增）：對應「調班未到」警示區塊的「標未到」按鈕，
+-- 義工端版本，比照既有後台 admin_transfer_mark_absent 的邏輯，僅加上 staff 驗證與狀態檢查
+-- （只允許「已登記」狀態才能標未到，避免誤按覆蓋已出席的紀錄）。
+CREATE OR REPLACE FUNCTION kiosk_transfer_mark_absent(p_staff_id bigint, p_transfer_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM _kiosk_verify_staff(p_staff_id);
+
+  UPDATE transfers SET status = '未到' WHERE id = p_transfer_id AND status = '已登記';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '找不到可標未到的日夜補登記（id=%），僅「已登記」狀態可標未到', p_transfer_id;
+  END IF;
 
   RETURN '{"ok":true}'::jsonb;
 END;
@@ -3947,6 +3998,7 @@ REVOKE EXECUTE ON FUNCTION kiosk_makeup_cancel_attend(bigint, bigint)           
 REVOKE EXECUTE ON FUNCTION kiosk_transfer_reset_to_registered(bigint, bigint)                    FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_cancel_makeup(bigint, bigint)                                  FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_cancel_transfer(bigint, bigint)                                FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)                           FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          FROM PUBLIC;
@@ -3970,6 +4022,7 @@ GRANT  EXECUTE ON FUNCTION kiosk_makeup_cancel_attend(bigint, bigint)           
 GRANT  EXECUTE ON FUNCTION kiosk_transfer_reset_to_registered(bigint, bigint)                    TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_cancel_makeup(bigint, bigint)                                  TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_cancel_transfer(bigint, bigint)                                TO anon;
+GRANT  EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)                           TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          TO anon;

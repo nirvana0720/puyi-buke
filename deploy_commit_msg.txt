@@ -1,13 +1,14 @@
-義工櫃台：編輯補課排除逾期/占用堂次、確認框改善、取消登記後清單連動刷新（重構52/52b/52c）
+義工櫃台新增「調班未到」自動警示；書籤/文件修正若干
 
-- kiosk_edit_makeup（後端已補逾期檢查，隨 SQL 部署，不在本次前端範圍）
-- toggleEditMakeupForm：編輯補課登記的「缺課堂次」下拉排除已逾期、已被其他登記占用的堂次
-  （正在編輯的這一堂本身仍保留可選）
-- renderMakeupRegisterForm：新增補課登記時，已登記過的缺課 checkbox 改為 disabled，
-  避免不小心勾選、被 register_makeup 的 ON CONFLICT 靜默覆蓋原本登記內容
-- 新增 kioskInlineConfirm（畫面內確認框，取代瀏覽器原生 confirm()）：起因是義工取消登記時
-  confirm() 彈窗容易按太快漏按確定，以為取消成功、資料其實沒刪掉。套用到「今日補課」清單、
-  「到場提醒/未到場」清單、「今日登記清單」三處的取消登記/取消到場按鈕
-- loadAlertsAndRegistrations 的 onCancelMakeup／onCancelTransfer：改呼叫 loadDay() 取代單純呼叫
-  自己，讓「今日登記清單」取消後「今日補課」清單也會跟著連動刷新，不用手動整頁重新整理
-- 純前端，本次無新增 SQL 異動（kiosk_edit_makeup 的逾期檢查等 SQL 已於稍早單獨部署到 Supabase）
+- kiosk_get_attendance_alerts 新增 transfer_no_show 區塊：已登記調班、目標班上課時間
+  已過 1 小時緩衝仍未標出席，主動跳出警示（SQL 已於稍早單獨部署到正式環境 Supabase）
+- 新增 kiosk_transfer_mark_absent：義工端標未到，比照後台 admin_transfer_mark_absent
+  加 staff 驗證與狀態檢查（SQL 已部署）
+- kiosk_alerts.js／kiosk.js：到場提醒新增第三個警示區塊，提供「標未到」「取消登記」
+  按鈕，串接上述新 RPC
+- grabber/bookmarklet.js：選班清單加狀態標籤（進行中／已結業），避免同名班別（MANUAL
+  舊分身已結業＋真代碼已綁定進行中）選錯，已重新產生 bookmarklet.min.txt
+- grabber/node_syncer/README.txt：修正共用 Supabase 的誤導說明，改為明確要求
+  SUPABASE_URL／SUPABASE_ANON_KEY／UNIT_ID 三項都要換成自己精舍的值
+- db/full_setup_all_in_one.sql：同步以上 RPC 異動，並含 list_audit_classes 改回只回傳
+  進行中班別（此項 SQL 已於稍早單獨部署到正式環境 Supabase）
