@@ -1,14 +1,6 @@
-義工櫃台新增「調班未到」自動警示；書籤/文件修正若干
+修正特定日期不開放補課：允許同一天新增多筆不重疊的時段設定
 
-- kiosk_get_attendance_alerts 新增 transfer_no_show 區塊：已登記調班、目標班上課時間
-  已過 1 小時緩衝仍未標出席，主動跳出警示（SQL 已於稍早單獨部署到正式環境 Supabase）
-- 新增 kiosk_transfer_mark_absent：義工端標未到，比照後台 admin_transfer_mark_absent
-  加 staff 驗證與狀態檢查（SQL 已部署）
-- kiosk_alerts.js／kiosk.js：到場提醒新增第三個警示區塊，提供「標未到」「取消登記」
-  按鈕，串接上述新 RPC
-- grabber/bookmarklet.js：選班清單加狀態標籤（進行中／已結業），避免同名班別（MANUAL
-  舊分身已結業＋真代碼已綁定進行中）選錯，已重新產生 bookmarklet.min.txt
-- grabber/node_syncer/README.txt：修正共用 Supabase 的誤導說明，改為明確要求
-  SUPABASE_URL／SUPABASE_ANON_KEY／UNIT_ID 三項都要換成自己精舍的值
-- db/full_setup_all_in_one.sql：同步以上 RPC 異動，並含 list_audit_classes 改回只回傳
-  進行中班別（此項 SQL 已於稍早單獨部署到正式環境 Supabase）
+- ui/admin/panel_makeup_rules.js：新增檢查改成同一天可以有多筆「只擋某時段」的設定，
+  只在①該天已整天不開放 ②新增整天不開放會蓋掉既有時段 ③新時段跟既有時段重疊 時才擋
+- 後端 _check_makeup_slot_allowed（rpc_04a_register_makeup.sql）本來就逐筆掃描陣列，
+  同一天多筆時段不需要改 SQL

@@ -248,10 +248,16 @@
       const allDay  = container.querySelector('#chk-blackout-allday').checked;
       const errEl   = container.querySelector('#blackout-err');
       if (!date) { errEl.textContent = '請選擇日期'; return; }
-      const dup = blackoutDates.some(b => b.date === date);
-      if (dup) { errEl.textContent = '此日期已列入不開放補課，請勿重複新增'; return; }
+
+      // 同一天可以有多筆「只擋某時段」的設定，只擋：
+      // ①該天已有整天不開放（再新增都是多餘）②新增的整天不開放會蓋掉既有時段設定
+      // ③新時段跟同一天既有時段重疊
+      const sameDate = blackoutDates.filter(b => b.date === date);
+      const hasAllDay = sameDate.some(b => !b.start || !b.end);
+      if (hasAllDay) { errEl.textContent = '此日期已設定整天不開放，請勿重複新增'; return; }
 
       if (allDay) {
+        if (sameDate.length) { errEl.textContent = '此日期已有時段設定，如需整天不開放請先刪除既有時段'; return; }
         errEl.textContent = '';
         blackoutDates.push({ date, reason: reason || null });
       } else {
@@ -259,6 +265,8 @@
         const end   = container.querySelector('#inp-blackout-end').value;
         if (!start || !end) { errEl.textContent = '請填入起訖時間'; return; }
         if (start >= end)   { errEl.textContent = '開始時間須早於結束時間'; return; }
+        const overlap = sameDate.some(b => start < b.end && end > b.start);
+        if (overlap) { errEl.textContent = '此時段與同一天既有時段重疊，請勿重複新增'; return; }
         errEl.textContent = '';
         blackoutDates.push({ date, reason: reason || null, start, end });
       }
