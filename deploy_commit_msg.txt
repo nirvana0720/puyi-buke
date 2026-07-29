@@ -1,6 +1,7 @@
-修正特定日期不開放補課：允許同一天新增多筆不重疊的時段設定
+移交手冊補充 10.2 書籤重新產生步驟：加裝 Node.js 說明
 
-- ui/admin/panel_makeup_rules.js：新增檢查改成同一天可以有多筆「只擋某時段」的設定，
-  只在①該天已整天不開放 ②新增整天不開放會蓋掉既有時段 ③新時段跟既有時段重疊 時才擋
-- 後端 _check_makeup_slot_allowed（rpc_04a_register_makeup.sql）本來就逐筆掃描陣列，
-  同一天多筆時段不需要改 SQL
+- 起因：普高精舍 Fork 依照 10.2 執行 node grabber/bookmarklet_build.js 出現
+  「'node' 不是內部或外部命令」，查明是電腦沒裝過 Node.js，跟 config.js／金鑰內容無關
+- 10.2 新增第 3 步：先用 node -v 確認有沒有裝，沒裝提供兩種方式（安裝 LTS 版，或改用
+  免安裝版 node.exe，比照 node_syncer 已用的做法）
+- 常見問題新增一則對應 Q&A

@@ -27,7 +27,9 @@
 確認以下三項都已經是「這台電腦所屬精舍」自己的值：
   SUPABASE_URL      = 這個精舍自己 Supabase 專案的網址
   SUPABASE_ANON_KEY = 這個精舍自己的 Publishable key
-  UNIT_ID           = 這個精舍的單位代碼（普宜精舍是 UNIT01071）
+  UNIT_ID           = 這個精舍的單位代碼（普宜精舍是 UNIT01071；規則是 UNIT010＋貴精舍
+                      的兩碼精舍代碼，例如代碼 71 → UNIT01071，詳見 docs 資料夾裡的
+                      「其他精舍部署SOP.md」）
 三項都要對，不能只改 UNIT_ID。
 ※ 要部署到別的精舍時，照 config.example.json 的格式，把這三項填成該精舍自己的值即可。
 

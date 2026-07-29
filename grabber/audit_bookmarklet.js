@@ -22,6 +22,11 @@
     return;
   }
 
+  // ── 1b. 執行前再確認一次比對的資料庫網址（唯讀，但避免誤用別分院/範例的書籤）─
+  if (!confirm(`[補課系統] 即將讀取比對的資料庫是：\n${SUPABASE_URL}\n（唯讀，不會寫入資料）\n\n請確認這是「貴分院自己」的 Supabase 網址，不是普宜精舍或其他分院的。\n確定要繼續嗎？`)) {
+    return;
+  }
+
   // ── 2. 載入 supabase-js（CDN）──────────────────────────────
   function loadScript(src) {
     return new Promise(function (resolve, reject) {

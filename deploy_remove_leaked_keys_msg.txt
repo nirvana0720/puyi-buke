@@ -1,0 +1,29 @@
+修正書籤把普宜真實金鑰打包進 git 的風險
+
+- 起因：良師父發現移交手冊 10.2 提到「Fork 下來的 .min.txt 書籤包著普宜真實金鑰」，
+  屬於設計風險——分院沒重新 build 就直接點書籤，會把資料寫進普宜正式資料庫，
+  比 config.js 接錯更難察覺（config.js 接錯分院自己網站馬上看得出來，書籤誤用是背景
+  寫入，且用的還是合法金鑰，不會被 RLS 擋下）
+- grabber/bookmarklet.min.txt、bookmarklet_quick.min.txt、audit_bookmarklet.min.txt
+  改成不進 git（.gitignore 新增），並用 git rm --cached 從目前版本移除追蹤；本機檔案
+  不受影響，普宜自己需要時仍可重新 build 或保留本機副本
+- grabber/bookmarklet.js、bookmarklet_quick.js、audit_bookmarklet.js 三支原始檔加一道
+  執行前確認視窗，顯示即將寫入/讀取的 Supabase 網址，作為第二道保險
+- 移交手冊.md 10.2 警語同步更新：說明書籤檔案不會隨 Fork 附帶，一定要自己重新產生
+- 目前 puyi-buke 只有「普高精舍」一個 Fork，需另外通知對方：這次更新後請重新
+  Sync fork／下載，並確認自己本機資料夾裡沒有殘留舊版（帶普宜金鑰）的 .min.txt 檔案
+
+順便一併推送：移交手冊 10.2 補充「重新產生書籤」步驟裡的兩個實測卡點
+- 電腦沒裝過 Node.js 導致 `node grabber/bookmarklet_build.js` 出現
+  「'node' 不是內部或外部命令」，補上安裝 Node.js LTS／改用免安裝版 node.exe 兩種解法
+- 在 grabber 資料夾內誤打完整路徑，變成 grabber/grabber/bookmarklet_build.js 找不到檔案
+- 免安裝版 node.exe 放錯資料夾（放進 grabber 裡面，而不是跟 grabber 同一層的最上層）
+  導致 node.exe 還是抓不到，10.2 方法二改成明確舉例＋放對位置後可用 dir 自我檢查
+這幾點也同步補進「常見問題」
+
+另外記錄 UNIT_ID 編碼規則（良師父確認）：UNIT010＋兩碼精舍代碼（普宜代碼71→UNIT01071，
+普高代碼62→UNIT01062），補進移交手冊.md 事前準備、grabber/node_syncer 的 README.txt
+與 docs/其他精舍部署SOP.md，往後新分院只要問到兩碼代碼就能自己算出完整 UNIT_ID，
+不用再靠 F12 Network 這種要對技術背景的方法（該法找到的其實是 zenclass 自己的編號，
+格式跟 UNIT_ID 不一樣，文件也已經把這點分清楚）
+

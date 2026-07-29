@@ -22,6 +22,7 @@ db/*
 .DS_Store
 Thumbs.db
 *.log
+~$*
 
 # 空白/無用殘留檔
 iconverr.txt
@@ -31,3 +32,10 @@ node_modules/
 
 # 測試專案的真實憑證（URL/anon key），跟 config/config.js 同樣道理不進 repo
 test/config.json
+
+# 2026-07-29：已 build 好的書籤字串會把 config/config.js 的真實金鑰壓縮寫死進去，
+# 之前這三支長期進 git，Fork 下來的分院不用重新 build 就能直接點——會把資料寫進
+# 普宜精舍正式資料庫。改成不進 repo，逼 Fork 分院一定要自己重新 build（見移交手冊 10.2）。
+grabber/bookmarklet.min.txt
+grabber/bookmarklet_quick.min.txt
+grabber/audit_bookmarklet.min.txt

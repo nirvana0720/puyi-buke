@@ -20,6 +20,11 @@
     return;
   }
 
+  // ── 1b. 寫入前再確認一次資料庫網址（避免誤用別分院/範例的書籤）─────
+  if (!confirm(`[補課系統] 即將把出缺勤資料寫入：\n${SUPABASE_URL}\n\n請確認這是「貴分院自己」的 Supabase 網址，不是普宜精舍或其他分院的。\n確定要繼續嗎？`)) {
+    return;
+  }
+
   // ── 2. 載入 supabase-js（CDN）──────────────────────────────
   async function loadScript(src) {
     return new Promise((resolve, reject) => {
