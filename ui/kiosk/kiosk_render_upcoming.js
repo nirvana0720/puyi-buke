@@ -88,21 +88,19 @@ function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days) {
     return (a.member_name || '').localeCompare(b.member_name || '', 'zh-Hant');
   });
 
-  const groups = new Map(); // "planned_date|planned_slot" -> rows[]
+  const groups = new Map(); // planned_date -> rows[]（同一天不同時段合併在同一組，比照調班區塊只依日期分組）
   all.forEach(m => {
-    const key = `${m.planned_date}|${m.planned_slot}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(m);
+    if (!groups.has(m.planned_date)) groups.set(m.planned_date, []);
+    groups.get(m.planned_date).push(m);
   });
 
-  containerEl.innerHTML = Array.from(groups.values()).map(rows => {
-    const first = rows[0];
+  containerEl.innerHTML = Array.from(groups.entries()).map(([date, rows]) => {
     const rowsHtml = rows.map(m => `
       <div class="kiosk-listrow">
-        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・缺課日期 ${_kupMD(m.session_date)}
+        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・${m.planned_slot || ''}・缺課日期 ${_kupMD(m.session_date)}
       </div>
     `).join('');
-    return _kupGroupHtml(_kupGroupHeader(first.planned_date, first.planned_slot), rowsHtml, rows.length);
+    return _kupGroupHtml(_kupGroupHeader(date), rowsHtml, rows.length);
   }).join('');
 
   _kupBindCollapse(containerEl);
