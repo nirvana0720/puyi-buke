@@ -16,6 +16,33 @@ function _kupGroupHeader(dateStr, timeStr) {
   return timeStr ? `${head} ${timeStr}` : head;
 }
 
+// 日期分組標題列：預設全部收合，沿用頁面既有 .kiosk-collapse-toggle／.kiosk-collapse-arrow
+// 樣式與收合邏輯（箭頭 ▼、collapsed 時旋轉 -90 度），右側加「N 筆」。點擊只切換該組（body 為
+// header 的 nextElementSibling，不用另外做 id 對照表）。
+function _kupGroupHtml(headerLabel, rowsHtml, count) {
+  return `
+    <div class="kiosk-listcard">
+      <div class="kiosk-listcard-title kiosk-collapse-toggle collapsed" data-kup-header>
+        <span class="kiosk-collapse-arrow">▼</span>
+        <span>${headerLabel}</span>
+        <span style="margin-left:auto;font-weight:400;font-size:13px">${count} 筆</span>
+      </div>
+      <div data-kup-body style="display:none">${rowsHtml}</div>
+    </div>
+  `;
+}
+function _kupBindCollapse(containerEl) {
+  containerEl.querySelectorAll('[data-kup-header]').forEach(header => {
+    header.addEventListener('click', () => {
+      const body = header.nextElementSibling;
+      if (!body) return;
+      const collapsing = body.style.display !== 'none';
+      body.style.display = collapsing ? 'none' : '';
+      header.classList.toggle('collapsed', collapsing);
+    });
+  });
+}
+
 // ── 未來日↔夜間調班補課 ──────────────────────────────────────────
 // transfers: [{transfer_id, member_name, from_class_name, to_class_name, to_date, note}]
 function renderUpcomingTransfers(containerEl, transfers, days) {
@@ -31,17 +58,17 @@ function renderUpcomingTransfers(containerEl, transfers, days) {
     groups.get(t.to_date).push(t);
   });
 
-  containerEl.innerHTML = Array.from(groups.entries()).map(([date, rows]) => `
-    <div class="kiosk-listcard">
-      <div class="kiosk-listcard-title">${_kupGroupHeader(date)}</div>
-      ${rows.map(t => `
-        <div class="kiosk-listrow">
-          <strong>${t.member_name}</strong>・${t.from_class_name} → ${t.to_class_name}
-          ${t.note ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">備註：${t.note}</div>` : ''}
-        </div>
-      `).join('')}
-    </div>
-  `).join('');
+  containerEl.innerHTML = Array.from(groups.entries()).map(([date, rows]) => {
+    const rowsHtml = rows.map(t => `
+      <div class="kiosk-listrow">
+        <strong>${t.member_name}</strong>・${t.from_class_name} → ${t.to_class_name}
+        ${t.note ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">備註：${t.note}</div>` : ''}
+      </div>
+    `).join('');
+    return _kupGroupHtml(_kupGroupHeader(date), rowsHtml, rows.length);
+  }).join('');
+
+  _kupBindCollapse(containerEl);
 }
 
 // ── 未來預約補課（一般補課＋培訓補課合併分組） ──────────────────────
@@ -70,17 +97,15 @@ function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days) {
 
   containerEl.innerHTML = Array.from(groups.values()).map(rows => {
     const first = rows[0];
-    return `
-    <div class="kiosk-listcard">
-      <div class="kiosk-listcard-title">${_kupGroupHeader(first.planned_date, first.planned_slot)}</div>
-      ${rows.map(m => `
-        <div class="kiosk-listrow">
-          <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・缺課日期 ${_kupMD(m.session_date)}
-        </div>
-      `).join('')}
-    </div>
-  `;
+    const rowsHtml = rows.map(m => `
+      <div class="kiosk-listrow">
+        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・缺課日期 ${_kupMD(m.session_date)}
+      </div>
+    `).join('');
+    return _kupGroupHtml(_kupGroupHeader(first.planned_date, first.planned_slot), rowsHtml, rows.length);
   }).join('');
+
+  _kupBindCollapse(containerEl);
 }
 
 if (typeof window !== 'undefined') {
