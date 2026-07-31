@@ -97,7 +97,7 @@ function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days) {
   containerEl.innerHTML = Array.from(groups.entries()).map(([date, rows]) => {
     const rowsHtml = rows.map(m => `
       <div class="kiosk-listrow">
-        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・${m.planned_slot || ''}・缺課日期 ${_kupMD(m.session_date)}
+        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・預約時間 ${m.planned_slot || ''}・缺課日期 ${_kupMD(m.session_date)}
       </div>
     `).join('');
     return _kupGroupHtml(_kupGroupHeader(date), rowsHtml, rows.length);
