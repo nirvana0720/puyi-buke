@@ -205,6 +205,14 @@ async function kioskGetTodayRegistrations(sb, staffId) {
   return data || { makeups: [], transfers: [] };
 }
 
+async function kioskGetUpcomingRegistrations(sb, staffId, daysAhead) {
+  const { data, error } = await sb.rpc('kiosk_get_upcoming_registrations', {
+    p_staff_id: staffId, p_days_ahead: daysAhead,
+  });
+  if (error) throw new Error(error.message);
+  return data || { transfers: [], makeups: [], training_makeups: [] };
+}
+
 // ── 今天日期（台北時間） ──────────────────────────────────────────
 function todayStr() {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
@@ -230,6 +238,34 @@ function todayStr() {
   let staff = null;
   try { staff = JSON.parse(sessionStorage.getItem(KIOSK_KEY)); } catch (_) {}
 
+  // ── 未來預約補課／調班：兩區塊各自獨立的天數狀態（預設 7 天） ────
+  let upcomingTransfersDays = 7;
+  let upcomingMakeupsDays   = 7;
+
+  async function loadUpcomingTransfers() {
+    const el = document.getElementById('kiosk-upcoming-transfers');
+    if (!el) return;
+    el.innerHTML = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
+    try {
+      const data = await kioskGetUpcomingRegistrations(sb, staff.staff_id, upcomingTransfersDays);
+      window.KioskUpcomingRender.renderUpcomingTransfers(el, data.transfers, upcomingTransfersDays);
+    } catch (err) {
+      el.innerHTML = `<p class="buke-msg err">❌ ${err.message}</p>`;
+    }
+  }
+
+  async function loadUpcomingMakeups() {
+    const el = document.getElementById('kiosk-upcoming-makeups');
+    if (!el) return;
+    el.innerHTML = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
+    try {
+      const data = await kioskGetUpcomingRegistrations(sb, staff.staff_id, upcomingMakeupsDays);
+      window.KioskUpcomingRender.renderUpcomingMakeups(el, data.makeups, data.training_makeups, upcomingMakeupsDays);
+    } catch (err) {
+      el.innerHTML = `<p class="buke-msg err">❌ ${err.message}</p>`;
+    }
+  }
+
   // ── 登入狀態切換 ─────────────────────────────────────────────
   function showDashboard() {
     loginSection.style.display  = 'none';
@@ -237,6 +273,8 @@ function todayStr() {
     staffNameEl.textContent     = staff.display_name || staff.role;
     datePicker.value            = todayStr();
     loadDay(datePicker.value);
+    loadUpcomingTransfers();
+    loadUpcomingMakeups();
   }
 
   function showLogin() {
@@ -578,6 +616,25 @@ function todayStr() {
     });
   });
 
+  // ── 未來預約補課／調班：天數切換 pill（兩區塊各自獨立） ──────────
+  document.querySelectorAll('[data-daypills]').forEach(group => {
+    group.querySelectorAll('.kiosk-daypill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('active')) return;
+        group.querySelectorAll('.kiosk-daypill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const days = Number(btn.dataset.days);
+        if (group.dataset.daypills === 'upcoming-transfers') {
+          upcomingTransfersDays = days;
+          loadUpcomingTransfers();
+        } else if (group.dataset.daypills === 'upcoming-makeups') {
+          upcomingMakeupsDays = days;
+          loadUpcomingMakeups();
+        }
+      });
+    });
+  });
+
   // ── 今日調班／今日補課／今日登記清單：標題點擊收合展開（登記多時避免畫面太長）──
   // 只切換內容 div 的 display，資料重新整理時只會換 innerHTML，收合狀態不受影響
   document.querySelectorAll('[data-collapse-target]').forEach(header => {
@@ -601,5 +658,6 @@ if (typeof window !== 'undefined') {
     kioskTrainingMakeupDepart,
     kioskGetAttendanceAlerts, kioskMakeupCancelAttend, kioskTransferResetToRegistered,
     kioskCancelMakeup, kioskCancelTransfer, kioskGetTodayRegistrations,
+    kioskGetUpcomingRegistrations,
   };
 }

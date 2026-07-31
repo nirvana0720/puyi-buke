@@ -101,6 +101,39 @@
     .kiosk-collapse-toggle.collapsed .kiosk-collapse-arrow {
       transform: rotate(-90deg);
     }
+    /* 未來預約補課／調班清單（2026-07-31 新增） */
+    .kiosk-section-warn   { border-left: 4px solid var(--warn-bar); }
+    .kiosk-section-makeup { border-left: 4px solid var(--makeup-tx); }
+    .kiosk-upcoming-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: -14px -16px 10px;
+      padding: 10px 16px;
+      border-radius: var(--r) var(--r) 0 0;
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .kiosk-section-warn   .kiosk-upcoming-title { background: var(--warn-bg);   color: var(--warn-tx); }
+    .kiosk-section-makeup .kiosk-upcoming-title { background: var(--makeup-bg); color: var(--makeup-tx); }
+    .kiosk-daypills { display: flex; gap: 6px; }
+    .kiosk-daypill {
+      padding: 4px 10px;
+      border-radius: var(--r-pill);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+      background: var(--header-tint);
+      color: var(--header);
+    }
+    .kiosk-daypill.active {
+      background: var(--header);
+      color: var(--header-tx);
+    }
     #login-section {
       max-width: 360px;
       margin: 60px auto;
@@ -224,6 +257,32 @@
       <div id="kiosk-makeups"></div>
     </div>
 
+    <!-- 未來日↔夜間調班補課 -->
+    <div class="kiosk-section kiosk-section-warn">
+      <div class="kiosk-upcoming-title">
+        <span>未來日↔夜間調班補課</span>
+        <div class="kiosk-daypills" data-daypills="upcoming-transfers">
+          <button type="button" class="kiosk-daypill active" data-days="7">7 天</button>
+          <button type="button" class="kiosk-daypill" data-days="14">14 天</button>
+          <button type="button" class="kiosk-daypill" data-days="30">30 天</button>
+        </div>
+      </div>
+      <div id="kiosk-upcoming-transfers"></div>
+    </div>
+
+    <!-- 未來預約補課 -->
+    <div class="kiosk-section kiosk-section-makeup">
+      <div class="kiosk-upcoming-title">
+        <span>未來預約補課</span>
+        <div class="kiosk-daypills" data-daypills="upcoming-makeups">
+          <button type="button" class="kiosk-daypill active" data-days="7">7 天</button>
+          <button type="button" class="kiosk-daypill" data-days="14">14 天</button>
+          <button type="button" class="kiosk-daypill" data-days="30">30 天</button>
+        </div>
+      </div>
+      <div id="kiosk-upcoming-makeups"></div>
+    </div>
+
     <!-- 今日到場記錄 -->
     <div class="kiosk-listcard">
       <div class="kiosk-listcard-title">📋 今日到場記錄</div>
@@ -255,6 +314,7 @@
 <script src="../../config/config.js" onerror="document.getElementById('login-err').textContent='設定檔載入失敗'"></script>
 <script src="kiosk_render.js"></script>
 <script src="kiosk_render_training.js"></script>
+<script src="kiosk_render_upcoming.js"></script>
 <script src="kiosk_name_search.js"></script>
 <script src="kiosk_alerts.js"></script>
 <script src="kiosk.js"></script>

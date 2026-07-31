@@ -3665,6 +3665,84 @@ BEGIN
 END;
 $$;
 
+-- kiosk_get_upcoming_registrations（2026-07-31 新增：未來預約補課／調班清單，
+-- 讓義工櫃台提前看到未來 N 天已登記但還沒到日期的補課／調班，跟「今日」清單分開查）
+CREATE OR REPLACE FUNCTION kiosk_get_upcoming_registrations(p_staff_id bigint, p_days_ahead int DEFAULT 7)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_today date := (now() AT TIME ZONE 'Asia/Taipei')::date;
+BEGIN
+  PERFORM _kiosk_verify_staff(p_staff_id);
+
+  RETURN jsonb_build_object(
+    'transfers', (
+      SELECT COALESCE(jsonb_agg(
+        jsonb_build_object(
+          'transfer_id',     t.id,
+          'member_name',     m.name,
+          'from_class_name', fc.class_name,
+          'to_class_name',   tc.class_name,
+          'to_date',         t.to_date,
+          'note',            t.note
+        ) ORDER BY t.to_date, m.name
+      ), '[]'::jsonb)
+      FROM transfers t
+      JOIN members  m  ON m.id  = t.member_ref
+      JOIN sessions s  ON s.id  = t.from_session_ref
+      JOIN classes  fc ON fc.id = s.class_ref
+      JOIN classes  tc ON tc.id = t.to_class_ref
+      WHERE t.status = '已登記'
+        AND t.to_date >= v_today
+        AND t.to_date <= v_today + p_days_ahead
+    ),
+    'makeups', (
+      SELECT COALESCE(jsonb_agg(
+        jsonb_build_object(
+          'makeup_id',    mk.id,
+          'member_name',  m.name,
+          'class_name',   c.class_name,
+          'session_date', s.date,
+          'planned_date', mk.planned_date,
+          'planned_slot', mk.planned_slot,
+          'type',         '補課'
+        ) ORDER BY mk.planned_date, mk.planned_slot, m.name
+      ), '[]'::jsonb)
+      FROM makeups mk
+      JOIN members m  ON m.id  = mk.member_ref
+      JOIN classes c  ON c.id  = m.class_ref
+      JOIN sessions s ON s.id  = mk.session_ref
+      WHERE mk.status = '待補課'
+        AND mk.planned_date >= v_today
+        AND mk.planned_date <= v_today + p_days_ahead
+    ),
+    'training_makeups', (
+      SELECT COALESCE(jsonb_agg(
+        jsonb_build_object(
+          'training_makeup_id', tm.id,
+          'member_name',        m.name,
+          'class_name',         tc.name,
+          'session_date',       ts.session_date,
+          'planned_date',       tm.planned_date,
+          'planned_slot',       tm.planned_slot,
+          'type',                '培訓補課'
+        ) ORDER BY tm.planned_date, tm.planned_slot, m.name
+      ), '[]'::jsonb)
+      FROM training_makeups tm
+      JOIN training_sessions ts ON ts.id = tm.training_session_ref
+      JOIN training_classes  tc ON tc.id = ts.class_ref
+      JOIN members           m  ON m.id  = tm.member_ref
+      WHERE tm.status = '待補課'
+        AND tm.planned_date >= v_today
+        AND tm.planned_date <= v_today + p_days_ahead
+    )
+  );
+END;
+$$;
+
 -- 舊前端相容用（get_training_courses，已停用但保留）
 CREATE OR REPLACE FUNCTION get_training_courses()
 RETURNS jsonb
@@ -4002,6 +4080,7 @@ REVOKE EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)           
 REVOKE EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION kiosk_get_upcoming_registrations(bigint, int)                        FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION kiosk_get_day(bigint, date)                                          TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_training_makeup_complete(bigint, bigint)                       TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_training_makeup_attend(bigint, bigint, integer)                TO anon;
@@ -4026,6 +4105,7 @@ GRANT  EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)           
 GRANT  EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          TO anon;
+GRANT  EXECUTE ON FUNCTION kiosk_get_upcoming_registrations(bigint, int)                        TO anon;
 
 -- get_training_courses：舊前端已停用但保留相容
 REVOKE EXECUTE ON FUNCTION get_training_courses() FROM PUBLIC;
