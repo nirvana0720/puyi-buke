@@ -235,6 +235,41 @@
     } catch (e) { return []; }
   }
 
+  /** 主要路徑：直接查今日班表（class_date_infos），不需錨點、不需猜號，
+   *  只有該班「正在上課時間內」才查得到；查到後渲染清單，點選後透過 onBindPick 回呼交由呼叫端綁定 */
+  async function renderTodayClassPicker(area, dateVal, cls, onBindPick) {
+    const resultEl = area.querySelector('.today-result');
+    resultEl.innerHTML = '<p class="buke-empty" style="font-size:13px">查詢中…</p>';
+    const items = await fetchZenclassDateInfosOptional(dateVal);
+
+    if (!items.length) {
+      resultEl.innerHTML = `<p class="buke-empty" style="font-size:13px">
+        目前查無今日班表，可能還沒到上課時間，可以稍後再查，或改用下方「進階：掃描猜號碼」。</p>`;
+      return;
+    }
+
+    const sorted = [...items].sort((a, b) => {
+      const am = a.className === cls.class_name ? 0 : 1;
+      const bm = b.className === cls.class_name ? 0 : 1;
+      return am - bm;
+    });
+
+    resultEl.innerHTML = sorted.map((it, i) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;
+                  padding:6px 0;border-bottom:1px solid var(--line)">
+        <span style="font-size:14px">
+          ${it.className || '—'}${it.className === cls.class_name ? ' <strong style="color:var(--ok-tx)">（班名相符）</strong>' : ''}
+          　${it.classStartTime || ''}–${it.classEndTime || ''}　代碼 ${it.classId}
+        </span>
+        <button class="buke-btn small btn-pick-today" data-idx="${i}" style="font-size:13px">選這班</button>
+      </div>`).join('');
+
+    resultEl.querySelectorAll('.btn-pick-today').forEach(btn => {
+      const picked = sorted[Number(btn.dataset.idx)];
+      btn.addEventListener('click', () => onBindPick({ classId: picked.classId, className: picked.className }));
+    });
+  }
+
   /** 綁定用：選定真代碼後，先查是否已被另一筆班別佔用，決定直接綁定或走合併流程 */
   async function confirmBind(sb, area, cls, picked, onRefresh) {
     const msgEl = area.querySelector('.bind-msg');
@@ -270,32 +305,53 @@
     }
   }
 
-  /** 渲染「綁定 zenclass 真代碼」表單：掃描法找真代碼 → 選對應真班 → confirmBind
-   *  class_date_infos 降級為可選雙重確認，不是必要路徑（見重構34 2026-07-07 修訂） */
+  /** 渲染「綁定 zenclass 真代碼」表單：
+   *  主要路徑＝查今日班表（class_date_infos）直接挑選；備援路徑＝錨點＋掃描猜號（收合在「進階」內）。
+   *  兩條路徑最終都呼叫同一個 confirmBind，不重複寫合併/綁定判斷邏輯。 */
   function renderBindForm(sb, area, cls, onRefresh, allClasses) {
     const today  = new Date().toLocaleDateString('sv-SE');
     const anchor = findAnchorClassId(allClasses, cls.class_name);
 
     area.innerHTML = `
       <div style="padding:10px;background:var(--bg);border-radius:var(--r-md)">
-        <div style="font-size:14px;margin-bottom:8px">
-          掃描錨點（${anchor ? '自動抓到一筆已知真代碼，' : '目前沒有已知真代碼可自動帶入，'}掃描是以這個代碼為中心往前後找；
-          如果掃不到，代表這班跟錨點不同號段，換一個同系列的班代碼再試）：
-        </div>
-        <input class="buke-input f-anchor" placeholder="例：CLS115031900005" value="${anchor || ''}" style="width:100%;margin-bottom:8px">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
           <label style="font-size:13px;color:var(--muted)">查詢日期
             <input type="date" class="buke-input f-binddate" value="${today}" style="width:150px;margin-left:4px">
           </label>
-          <label style="font-size:13px;color:var(--muted)">掃描範圍 ±
-            <input type="number" class="buke-input f-scanrange" value="${ZENCLASS_SCAN_RANGE}" min="1" max="200" style="width:70px;margin-left:4px">
-          </label>
-          <button class="buke-btn btn-query-schedule" style="font-size:13px">掃描查詢真代碼</button>
+          <button class="buke-btn btn-query-today" style="font-size:13px">查詢今日班表</button>
         </div>
-        <div class="bind-progress" style="font-size:13px;color:var(--muted)"></div>
-        <div class="bind-result"></div>
+        <div class="today-result"></div>
         <div class="bind-msg" style="font-size:13px;margin-top:6px"></div>
+
+        <details style="margin-top:16px">
+          <summary style="font-size:13px;color:var(--muted);cursor:pointer">
+            進階：掃描猜號碼（不限上課時間，需要已知真代碼當錨點）
+          </summary>
+          <div style="margin-top:10px">
+            <div style="font-size:14px;margin-bottom:8px">
+              掃描錨點（${anchor ? '自動抓到一筆已知真代碼，' : '目前沒有已知真代碼可自動帶入，'}掃描是以這個代碼為中心往前後找；
+              如果掃不到，代表這班跟錨點不同號段，換一個同系列的班代碼再試）：
+            </div>
+            <input class="buke-input f-anchor" placeholder="例：CLS115031900005" value="${anchor || ''}" style="width:100%;margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+              <label style="font-size:13px;color:var(--muted)">掃描範圍 ±
+                <input type="number" class="buke-input f-scanrange" value="${ZENCLASS_SCAN_RANGE}" min="1" max="200" style="width:70px;margin-left:4px">
+              </label>
+              <button class="buke-btn btn-query-schedule" style="font-size:13px">掃描查詢真代碼</button>
+            </div>
+            <div class="bind-progress" style="font-size:13px;color:var(--muted)"></div>
+            <div class="bind-result"></div>
+          </div>
+        </details>
       </div>`;
+
+    area.querySelector('.btn-query-today').addEventListener('click', () => {
+      const dateVal = area.querySelector('.f-binddate').value;
+      const msgEl   = area.querySelector('.bind-msg');
+      msgEl.textContent = '';
+      if (!dateVal) { msgEl.textContent = '請選擇日期'; return; }
+      renderTodayClassPicker(area, dateVal, cls, (picked) => confirmBind(sb, area, cls, picked, onRefresh));
+    });
 
     area.querySelector('.btn-query-schedule').addEventListener('click', async () => {
       const dateVal    = area.querySelector('.f-binddate').value;
