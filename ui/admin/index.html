@@ -59,6 +59,7 @@
       border-left-color: var(--header);
       font-weight: 600;
     }
+    .menu-item svg { flex-shrink: 0; }
     .menu-item.placeholder { color: var(--muted); cursor: default; }
     .menu-item .soon-tag {
       font-size: 10px;
@@ -172,24 +173,24 @@
     <!-- 左側選單 -->
     <nav class="admin-sidebar">
       <div class="menu-group-label">班級與名冊</div>
-      <button class="menu-item" data-panel="import">📥 匯入資料</button>
-      <button class="menu-item" data-panel="classes">🏫 班別設定</button>
-      <button class="menu-item" data-panel="leave">😴 休學管理</button>
+      <button class="menu-item" data-panel="import"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0l-4-4m4 4l4-4"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg> 匯入資料</button>
+      <button class="menu-item" data-panel="classes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/></svg> 班別設定</button>
+      <button class="menu-item" data-panel="leave"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></svg> 休學管理</button>
 
       <div class="menu-group-label">角色與帳號</div>
-      <button class="menu-item" data-panel="assign">🏅 角色指派</button>
-      <button class="menu-item" data-panel="volunteers">👷 義工帳號</button>
+      <button class="menu-item" data-panel="assign"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M8 21l-1-6 5 2 5-2-1 6"/></svg> 角色指派</button>
+      <button class="menu-item" data-panel="volunteers"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"/></svg> 義工帳號</button>
 
       <div class="menu-group-label">補課與調課</div>
-      <button class="menu-item" data-panel="makeup-rules">📋 補課規定設定</button>
-      <button class="menu-item" data-panel="makeup-overview">📊 補課／調課總覽</button>
-      <button class="menu-item" data-panel="training">🎓 精舍培訓課程</button>
-      <button class="menu-item" data-panel="training-makeup-overview">📊 培訓補課總覽</button>
+      <button class="menu-item" data-panel="makeup-rules"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="1.5"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M9 11h6M9 15h6"/></svg> 補課規定設定</button>
+      <button class="menu-item" data-panel="makeup-overview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V10M12 21V4M19 21v-7"/></svg> 補課／調課總覽</button>
+      <button class="menu-item" data-panel="training"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-4.5"/></svg> 精舍培訓課程</button>
+      <button class="menu-item" data-panel="training-makeup-overview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V10M12 21V4M19 21v-7"/></svg> 培訓補課總覽</button>
 
       <div class="menu-group-label">各式總表</div>
-      <button class="menu-item" data-panel="overview">📇 各班總覽</button>
-      <button class="menu-item" data-panel="risk">🚨 結業風險總表</button>
-      <button class="menu-item" data-panel="students">📃 學員總表</button>
+      <button class="menu-item" data-panel="overview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18M9 10v9"/></svg> 各班總覽</button>
+      <button class="menu-item" data-panel="risk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg> 結業風險總表</button>
+      <button class="menu-item" data-panel="students"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9.5 12h5M9.5 15.5h5"/></svg> 學員總表</button>
     </nav>
 
     <!-- 右側內容 -->
