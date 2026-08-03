@@ -66,7 +66,11 @@
     }
     const attendUrl = `${API_BASE}/meditation/api/kiosk/class_attend_records`
       + `?classDate=${dateStr}&classId=${targetClass.class_id}&includes=${encodeURIComponent(includes)}`;
-    const attendRes = await fetch(attendUrl, { credentials: 'include' });
+    // ⚠️ 不要帶 credentials: 'include'：這支 zenclass API 回應的 Access-Control-Allow-Origin
+    // 是萬用字元 '*'，瀏覽器規範規定「帶憑證的跨網域請求」不能搭配萬用字元 CORS 標頭，
+    // 一定會被瀏覽器擋下（2026-08-03 普高精舍實測發現，Console 顯示 CORS policy 錯誤）。
+    // 這支 API 本身不需要 cookie 就查得到資料（後台「查詢今日班表」也是不帶 credentials 呼叫）。
+    const attendRes = await fetch(attendUrl);
     const attendJson = await attendRes.json();
     if (attendJson.errCode !== 200) {
       throw new Error(`取報到名單失敗 (errCode ${attendJson.errCode})`);
@@ -132,7 +136,8 @@
     if (matchedClasses.some(c => c.class_id.startsWith('MANUAL-'))) {
       try {
         const infoUrl = `${API_BASE}/meditation/api/kiosk/class_date_infos?unitId=${UNIT_ID}&classDate=${dateStr}`;
-        const infoRes  = await fetch(infoUrl, { credentials: 'include' });
+        // 同上：不帶 credentials，避免萬用字元 CORS 標頭衝突
+        const infoRes  = await fetch(infoUrl);
         const infoJson = await infoRes.json();
         if (infoJson.errCode === 200) dateInfos = infoJson.items || [];
       } catch (e) { /* 查不到就維持空陣列，交給下面的「尚未綁定」訊息處理 */ }

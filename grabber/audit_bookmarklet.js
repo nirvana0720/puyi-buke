@@ -145,7 +145,10 @@
 
       var officialRecords;
       try {
-        var res = await fetch(attendUrl, { credentials: 'include' });
+        // ⚠️ 不要帶 credentials: 'include'：這支 zenclass API 回應的 Access-Control-Allow-Origin
+        // 是萬用字元 '*'，瀏覽器規範規定「帶憑證的跨網域請求」不能搭配萬用字元 CORS 標頭，
+        // 一定會被瀏覽器擋下（2026-08-03 普高精舍實測發現）。這支 API 本身不需要 cookie 就查得到資料。
+        var res = await fetch(attendUrl);
         var json = await res.json();
         if (json.errCode !== 200) {
           allDiffRows.push({ class_name: targetClass.class_name, date: sess.date, member_id: '', name: '', status: '', official_mark: '', our_mark: '', source: '', type: '該日官方查詢失敗' });
