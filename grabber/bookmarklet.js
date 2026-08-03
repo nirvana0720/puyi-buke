@@ -15,7 +15,10 @@
   const API_BASE         = 'https://zenclass.ctcm.org.tw';
 
   // ── 1. 確認在正確頁面 ──────────────────────────────────────
-  if (!location.href.includes('zenclass.ctcm.org.tw')) {
+  // ⚠️ 不要求網域完全等於 zenclass.ctcm.org.tw：不同分院看到的頁面網域可能不同
+  // （例如 zen.ctcm.org.tw，2026-08-03 普高精舍實測發現），只要是 ctcm.org.tw 底下
+  // 的 kiosk 頁面就放行，真正的資料來源網域一律用下面設定的 API_BASE，不看頁面網址。
+  if (!location.href.includes('ctcm.org.tw') || !location.href.includes('/kiosk/')) {
     alert('[補課系統] 請在 zenclass kiosk 頁面使用此書籤！');
     return;
   }
