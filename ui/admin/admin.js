@@ -178,6 +178,32 @@ async function deleteSession(sb, id) {
 
 // ── 學員 ─────────────────────────────────────────────────────
 
+const STUDENT_STATS_PAGE_SIZE = 1000;
+
+/** 分批撈全部學員出席統計（admin_student_stats），避免被 Supabase 平台預設
+ *  「單次回應最多 1000 筆」的上限悄悄砍掉資料——不會報錯，畫面上也看不出異狀，
+ *  只是後面的學員完全不會出現（2026-08-04 發現：普高精舍實際 3366 位在學學員，
+ *  原本三個面板〔學員總表／各班總覽／結業風險總表〕都各自單次呼叫沒分頁，
+ *  只抓到前 1000 位）。用 .range() 分批抓、抓到不滿一批就代表撈完了，
+ *  不管學員數多少都不會漏，也不用去 Supabase 後台另外調高 Max Rows 設定
+ *  （那個設定調了還是有上限，之後人數再成長一樣會爆）。
+ *  這是三個面板共用的唯一版本，不要各自複製一份。 */
+async function fetchAllStudentStats(sb) {
+  const rows = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .rpc('admin_student_stats', {})
+      .range(from, from + STUDENT_STATS_PAGE_SIZE - 1);
+    if (error) throw new Error(`取學員統計失敗：${error.message}`);
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < STUDENT_STATS_PAGE_SIZE) break;
+    from += STUDENT_STATS_PAGE_SIZE;
+  }
+  return rows;
+}
+
 /** 取指定班所有學員（含休學），依組別/組號排列 */
 async function fetchMembersWithStatus(sb, classRef) {
   const { data, error } = await sb
@@ -256,7 +282,7 @@ if (typeof window !== 'undefined') {
     updateClass, insertClass, archiveClass, activateClass,
     bindClassId, findClassByClassId,
     fetchSessions, updateSession, deleteSession,
-    fetchMembersWithStatus, setMemberStatusLocal,
+    fetchMembersWithStatus, setMemberStatusLocal, fetchAllStudentStats,
     fetchAssignments, setBaseRole, toggleRollcallRole,
   };
 }

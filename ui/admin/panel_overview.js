@@ -4,16 +4,16 @@
 'use strict';
 
 (function () {
-  const { fetchClasses, compareClassSchedule } = window.AdminData;
+  const { fetchClasses, compareClassSchedule, fetchAllStudentStats } = window.AdminData;
 
   async function loadOverviewPanel(sb, container) {
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
-      const [{ data, error }, classes] = await Promise.all([
-        sb.rpc('admin_student_stats', {}),
+      // fetchAllStudentStats：分批抓，避免 Supabase 單次 1000 筆上限漏學員（主檔見 admin.js）
+      const [data, classes] = await Promise.all([
+        fetchAllStudentStats(sb),
         fetchClasses(sb),
       ]);
-      if (error) throw new Error(error.message);
       if (!data || !data.length) {
         container.innerHTML = '<p class="buke-empty">目前沒有進行中的班別資料。</p>';
         return;

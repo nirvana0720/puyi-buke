@@ -23,12 +23,13 @@
 
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
-      const [{ data, error }, classes] = await Promise.all([
-        sb.rpc('admin_student_stats', {}),
+      // fetchAllStudentStats：分批抓全部學員統計，避免 Supabase 單次 1000 筆上限漏資料
+      // （主檔在 admin.js，各班總覽／結業風險總表共用同一份，見該檔案註解）
+      const [rows, classes] = await Promise.all([
+        fetchAllStudentStats(sb),
         fetchClasses(sb),
       ]);
-      if (error) throw new Error(error.message);
-      _allRows = data || [];
+      _allRows = rows;
       _scheduleMap = new Map(classes.map(c => [c.id, c]));
       renderStudentsShell(container, opts);
       applyAndRender(container);
