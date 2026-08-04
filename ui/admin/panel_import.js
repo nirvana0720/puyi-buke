@@ -160,13 +160,13 @@
     try {
       const classes  = await fetchClasses(sb);
       const eligible = classes.filter(c => c.status !== '已結業').sort(compareClassSchedule);
-      renderShell(sb, container, eligible);
+      renderShell(sb, container, eligible, classes);
     } catch (e) {
       container.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
     }
   }
 
-  function renderShell(sb, container, classes) {
+  function renderShell(sb, container, classes, allClasses) {
     const classOpts = classes
       .map(c => `<option value="${c.id}">${c.class_name}（${c.status}）</option>`)
       .join('');
@@ -220,14 +220,14 @@
     dropzone.addEventListener('drop', e => {
       e.preventDefault(); dropzone.style.borderColor = '';
       const f = e.dataTransfer.files[0];
-      if (f) handleFile(sb, container, f);
+      if (f) handleFile(sb, container, f, allClasses);
     });
     fileInput.addEventListener('change', e => {
-      if (e.target.files[0]) handleFile(sb, container, e.target.files[0]);
+      if (e.target.files[0]) handleFile(sb, container, e.target.files[0], allClasses);
     });
   }
 
-  async function handleFile(sb, container, file) {
+  async function handleFile(sb, container, file, classes) {
     const msgEl  = container.querySelector('#imp-parse-msg');
     const prevEl = container.querySelector('#imp-preview');
     container.querySelector('#imp-result').innerHTML = '';
@@ -267,22 +267,90 @@
       msgEl.innerHTML = parsed.hasDateCols
         ? `<span style="color:var(--ok-tx)">✅ 解析到 ${parsed.members.length} 位學員、${parsed.heldDates.length} 個已上課次（${futureNote}）</span>`
         : `<span style="color:var(--ok-tx)">✅ 解析到 ${parsed.members.length} 筆學員</span>`;
-      renderPreview(sb, container, parsed);
+      renderPreview(sb, container, parsed, classes, file.name);
     } catch (e) {
       msgEl.innerHTML = `<span style="color:var(--danger-tx)">❌ ${e.message}</span>`;
     }
   }
 
-  function renderPreview(sb, container, parsed) {
+  /** 依 classes 陣列找目標班別物件並組出顯示用文字，如：二夜中級班（夜班・星期三） */
+  function formatTargetClassInfo(targetClass) {
+    if (!targetClass) return '';
+    const dn = targetClass.day_night === '夜' ? '夜班' : '日班';
+    return `${targetClass.class_name}（${dn}・星期${targetClass.day_of_week}）`;
+  }
+
+  /** 步驟 3：學員編號跨班重疊偵測——查這批學員編號是否已存在於其他 class_ref，依班別分組計數 */
+  async function checkMemberOverlap(sb, members, classRef, classes) {
+    const ids = members.map(m => m.member_id).filter(Boolean);
+    if (!ids.length) return [];
+    const { data, error } = await sb
+      .from('members')
+      .select('member_id, class_ref')
+      .neq('class_ref', classRef)
+      .in('member_id', ids);
+    if (error || !data || !data.length) return [];
+
+    const countByRef = {};
+    for (const row of data) {
+      countByRef[row.class_ref] = (countByRef[row.class_ref] || 0) + 1;
+    }
+    const classById = Object.fromEntries(classes.map(c => [c.id, c]));
+    return Object.entries(countByRef).map(([ref, count]) => ({
+      className: classById[ref]?.class_name || `未知班別（id=${ref}）`,
+      count,
+    }));
+  }
+
+  /** 步驟 4：檔名跟目標班別兜不起來偵測（回傳警示文字陣列，可能同時有多筆） */
+  function checkFileNameMismatch(fileName, targetClass, classes) {
+    const warnings = [];
+    if (!fileName || !targetClass) return warnings;
+
+    const otherMatch = classes.find(c =>
+      c.id !== targetClass.id && c.class_name && fileName.includes(c.class_name));
+    const targetNameInFile = fileName.includes(targetClass.class_name);
+
+    if (otherMatch && !targetNameInFile) {
+      warnings.push(
+        `⚠️ 上傳的檔案名稱「${fileName}」看起來對應到「${otherMatch.class_name}」，` +
+        `但目前選的目標班別是「${targetClass.class_name}」，請確認有沒有選錯。`
+      );
+    } else {
+      const hasDay   = fileName.includes('日');
+      const hasNight = fileName.includes('夜');
+      if (targetClass.day_night === '夜' && hasDay && !hasNight) {
+        warnings.push('⚠️ 檔案名稱裡有「日」字樣，但目前選的目標班別是夜班，請確認有沒有選錯班別或傳錯檔案。');
+      } else if (targetClass.day_night !== '夜' && hasNight && !hasDay) {
+        warnings.push('⚠️ 檔案名稱裡有「夜」字樣，但目前選的目標班別是日班，請確認有沒有選錯班別或傳錯檔案。');
+      }
+    }
+    return warnings;
+  }
+
+  async function renderPreview(sb, container, parsed, classes, fileName) {
     const { members, heldDates, allDates, cancelledDates, attendCount, hasDateCols } = parsed;
     const prevEl  = container.querySelector('#imp-preview');
     const sample  = members.slice(0, 5);
     const hasRole = members.some(m => m.role);
     const futureCount = allDates.length - heldDates.length - cancelledDates.length;
 
+    const classRef    = Number(container.querySelector('#imp-class').value);
+    const targetClass = classes.find(c => c.id === classRef);
+    const targetInfo  = formatTargetClassInfo(targetClass);
+
     prevEl.innerHTML = `
       <div class="buke-card">
         <div style="font-weight:500;margin-bottom:10px">④ 預覽（前 ${sample.length} 筆，共 ${members.length} 筆）</div>
+
+        ${targetClass ? `
+        <div style="background:var(--warn-bg);color:var(--warn-tx);border:1px solid var(--warn-line);
+                    border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-weight:500">
+          即將匯入到：${targetInfo}
+        </div>` : ''}
+
+        <div id="imp-overlap-warning"></div>
+        <div id="imp-warning-gate"></div>
 
         ${hasDateCols ? `
         <div style="margin-bottom:12px;font-size:14px">
@@ -340,13 +408,55 @@
       </div>`;
     prevEl.style.display = '';
 
+    const confirmBtn = prevEl.querySelector('#imp-confirm');
+    const warnEl      = prevEl.querySelector('#imp-overlap-warning');
+    const gateEl      = prevEl.querySelector('#imp-warning-gate');
+    const progEl      = prevEl.querySelector('#imp-progress');
+
+    const fileNameWarnings = targetClass ? checkFileNameMismatch(fileName, targetClass, classes) : [];
+
+    function applyWarnings(extraWarnings) {
+      const allWarnings = [...fileNameWarnings, ...extraWarnings];
+      warnEl.innerHTML = allWarnings
+        .map(w => `<div class="buke-msg err" style="margin-bottom:8px">${w}</div>`)
+        .join('');
+      if (allWarnings.length) {
+        gateEl.innerHTML = `
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:10px 0;cursor:pointer">
+            <input type="checkbox" id="imp-warning-ack">
+            我已確認班別沒有選錯，仍要匯入
+          </label>`;
+        confirmBtn.disabled = true;
+        gateEl.querySelector('#imp-warning-ack').addEventListener('change', e => {
+          confirmBtn.disabled = !e.target.checked;
+        });
+      } else {
+        gateEl.innerHTML = '';
+        confirmBtn.disabled = false;
+      }
+    }
+
+    applyWarnings([]);
+
+    if (targetClass && members.length) {
+      confirmBtn.disabled = true;
+      progEl.textContent  = '檢查班別是否選錯中…';
+      checkMemberOverlap(sb, members, classRef, classes)
+        .then(overlapGroups => {
+          const overlapWarnings = overlapGroups.map(g =>
+            `⚠️ 偵測到 ${g.count} 位學員的編號已經存在於「${g.className}」，如果您要匯入的對象不是這些人，代表班別可能選錯了，請先確認再匯入。`);
+          applyWarnings(overlapWarnings);
+        })
+        .finally(() => { progEl.textContent = ''; });
+    }
+
     prevEl.querySelector('#imp-cancel').addEventListener('click', () => {
       prevEl.style.display = 'none';
       container.querySelector('#imp-parse-msg').innerHTML = '';
       container.querySelector('#imp-file').value = '';
       container.querySelector('#imp-result').innerHTML = '';
     });
-    prevEl.querySelector('#imp-confirm').addEventListener('click', () =>
+    confirmBtn.addEventListener('click', () =>
       doImport(sb, container, prevEl, parsed));
   }
 
