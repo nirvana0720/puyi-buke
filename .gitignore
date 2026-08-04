@@ -39,3 +39,14 @@ test/config.json
 grabber/bookmarklet.min.txt
 grabber/bookmarklet_quick.min.txt
 grabber/audit_bookmarklet.min.txt
+
+# 2026-08-04：schedule_sync.ps1／schedule_sync_v7_check.ps1 是 node_syncer 出現前
+# （2026-07-17 前）的舊版排程嘗試，2026-07-17 已定案改用 node_syncer，這兩支「保留備查
+# 但已被取代」，本來就不該再被任何分院使用。問題是這兩支檔案內部自己寫死了普宜的
+# SUPABASE_URL／UNIT_ID（沒有讀取 config/config.js 或 config.json），沒清掉的話一直留
+# 在 git 裡，Fork 分院如果不小心用了舊版 grabber/ 根目錄的 setup_schedule.bat 建排程，
+# 就會踩到同一個「明明用自己電腦，資料卻同步去普宜資料庫」的坑（普高精舍已踩過一次）。
+# 改成不進 repo：本機檔案不受影響（良師父自己開發機仍可保留備查），Fork 下來的分院
+# 完全拿不到，只會看到 node_syncer/ 這個現在唯一該用的版本。
+grabber/schedule_sync.ps1
+grabber/schedule_sync_v7_check.ps1
