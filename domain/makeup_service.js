@@ -26,7 +26,7 @@ async function getSettings(sb, classRef) {
 // ── 主要函式 ─────────────────────────────────────────────────
 
 /**
- * 取學員「可補的缺堂」清單（mark ∈ {O,A,LL} 且 session is_held=true）
+ * 取學員「可補的缺堂」清單（mark ∈ {O,A,LL,E,W,X,S1,S2,S3} 且 session is_held=true）
  * 附每堂的 earliest / deadline / 是否逾期
  *
  * @param {object} sb         supabase client
@@ -50,7 +50,7 @@ async function getStudentAbsences(sb, memberRef) {
     .from('attendance')
     .select('id, mark, session_ref, sessions(id, date, is_held, class_ref)')
     .eq('member_ref', memberRef)
-    .in('mark', ['O', 'A', 'LL']);
+    .in('mark', ['O', 'A', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3']);
 
   if (error) throw new Error(`取缺堂記錄失敗：${error.message}`);
 

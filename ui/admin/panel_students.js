@@ -200,8 +200,9 @@
 
   const MARK_LABEL = {
     V: '出席', L: '遲到', LL: '靜坐遲到', A: '晚到', O: '請假/缺席', M: '補課', ML: '靜坐補課',
+    D: '日補', N: '夜補', E: '早退', W: '公假', X: '中輟', S1: '特殊1', S2: '特殊2', S3: '特殊3',
   };
-  const MARK_OPTIONS = ['V', 'L', 'LL', 'A', 'O', 'M', 'ML'];
+  const MARK_OPTIONS = ['V', 'L', 'LL', 'A', 'O', 'M', 'ML', 'D', 'N', 'E', 'W', 'X', 'S1', 'S2', 'S3'];
 
   /** 幫每一列出缺勤掛上「編輯」互動：改標記、遇到對應補課登記時詢問是否一併刪除 */
   function wireAttendanceEdit(body, v, memberDbId) {

@@ -3,7 +3,10 @@
 
 'use strict';
 
-const MARK_LABEL = { O: '請假/缺席', A: '晚到(≥60分)', LL: '靜坐遲到(20~60分)' };
+const MARK_LABEL = {
+  O: '請假/缺席', A: '晚到(≥60分)', LL: '靜坐遲到(20~60分)',
+  E: '早退', W: '公假', X: '中輟', S1: '特殊1', S2: '特殊2', S3: '特殊3',
+};
 
 // 從 'YYYY-MM-DD' 安全解析星期（不依賴本地時區）
 function _dayStr(dateStr) {

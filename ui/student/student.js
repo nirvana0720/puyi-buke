@@ -3,7 +3,7 @@
 
 'use strict';
 
-const ABSENT_MARKS = new Set(['O', 'A', 'LL']);
+const ABSENT_MARKS = new Set(['O', 'A', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3']);
 
 /** 從 sessionStorage 取登入資料，查無則回 null */
 function getSession() {

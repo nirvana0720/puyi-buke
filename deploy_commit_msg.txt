@@ -1,7 +1,9 @@
-移除舊版排程腳本 schedule_sync.ps1／schedule_sync_v7_check.ps1，移交手冊補警告
+新出缺勤代碼分類補完（E＋8碼）；移除舊版排程腳本 schedule_sync.ps1
 
-- 這兩支是 node_syncer 出現前（2026-07-17 前）的舊版排程嘗試，內部寫死普宜精舍自己的
-  SUPABASE_URL／UNIT_ID，不讀 config.json；普高精舍誤用其中一支建排程，資料被寫進普宜
-  自己的資料庫而非普高的，已改用 node_syncer 重新建好排程
-- .gitignore 新增這兩支檔案，git rm --cached 移出版控（本機保留備查，Fork 不會再拿到）
-- 移交手冊.md 10.1 節新增警告區塊，提醒 Fork 分院只用 grabber/node_syncer/
+- D/N 併入出席組，E/W/X/S1/S2/S3 併入缺課組並觸發補課義務，F 只放行 CHECK 約束不分類
+- 修正 rpc_admin_stats.sql 孤兒函式分歧（重構20~27 疊代過但沒回寫主檔），新增 x_count
+  欄位供休學管理面板中輟提醒用；makeup_service.js／panel_makeup_overview.js 缺堂查詢、
+  student.js／leader render.js 缺堂清單標籤一併同步擴充
+- 移除舊版排程腳本 grabber/schedule_sync.ps1／schedule_sync_v7_check.ps1（node_syncer
+  出現前的舊版嘗試，內部寫死普宜自己的 Supabase 憑證，普高精舍已誤用踩坑），
+  .gitignore 排除、移交手冊補警告

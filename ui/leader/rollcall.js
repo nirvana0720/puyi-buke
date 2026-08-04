@@ -11,6 +11,14 @@ const ROLLCALL_MARK_MAP = {
   O:  { label: '請假/缺席',      cls: 'danger' },
   M:  { label: '補課',           cls: 'makeup' },
   ML: { label: '靜坐補課',       cls: 'makeup' },
+  D:  { label: '日補',           cls: 'makeup' },
+  N:  { label: '夜補',           cls: 'makeup' },
+  E:  { label: '早退',           cls: 'warn'   },
+  W:  { label: '公假',           cls: 'danger' },
+  X:  { label: '中輟',           cls: 'danger' },
+  S1: { label: '特殊1',          cls: 'danger' },
+  S2: { label: '特殊2',          cls: 'danger' },
+  S3: { label: '特殊3',          cls: 'danger' },
 };
 
 async function fetchTodayRollcallViaRpc(sb, memberDbId) {
@@ -53,7 +61,7 @@ function _renderMakeupCompletions(records) {
     </div>`;
 }
 
-const ATTENDED_MARKS = new Set(['V', 'L', 'LL', 'A', 'M', 'ML']);
+const ATTENDED_MARKS = new Set(['V', 'L', 'LL', 'A', 'M', 'ML', 'D', 'N', 'E']);
 
 function renderRollcall(container, data) {
   if (!container) return;

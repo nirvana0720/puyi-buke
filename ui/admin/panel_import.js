@@ -468,9 +468,9 @@
         const sessionIdMap = Object.fromEntries((dbSessions || []).map(r => [r.date, r.id]));
 
         // 5. upsert attendance（每位學員 × 每個已上課次）
-        // 出缺勤代碼只認 7 種官方標記，其餘一律視為無法辨識，匯入前先擋下並明確列出
+        // 出缺勤代碼只認 16 種官方標記，其餘一律視為無法辨識，匯入前先擋下並明確列出
         // 「哪位學員、哪一天、寫了什麼」，不要讓資料庫的 CHECK 限制擋下整批卻看不出是哪一筆。
-        const VALID_MARKS = new Set(['V', 'L', 'ML', 'M', 'A', 'O', 'LL']);
+        const VALID_MARKS = new Set(['V', 'L', 'ML', 'M', 'A', 'O', 'LL', 'E', 'D', 'N', 'W', 'X', 'F', 'S1', 'S2', 'S3']);
         const attendRows = [];
         const badMarks = [];
         for (const m of members) {

@@ -322,7 +322,7 @@
   async function _loadAbsencesInto(memberRef, sesSel, curRef, opts = {}) {
     const { excludeMakeupId, onlyOverdue = false } = opts;
     const [{ data: attData }, { data: setRow }, { data: muRows }] = await Promise.all([
-      _sb.from('attendance').select('session_ref,sessions!inner(date,week_num)').eq('member_ref', memberRef).in('mark', ['O', 'A', 'LL']),
+      _sb.from('attendance').select('session_ref,sessions!inner(date,week_num)').eq('member_ref', memberRef).in('mark', ['O', 'A', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3']),
       _sb.from('settings').select('makeup_deadline_days').is('class_ref', null).single(),
       _sb.from('makeups').select('id,session_ref').eq('member_ref', memberRef),
     ]);

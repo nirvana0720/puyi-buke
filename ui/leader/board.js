@@ -21,8 +21,8 @@ function getSession() {
  * @returns {StudentStats}
  */
 function calcStats(marks, total, unregisteredAbsences = [], makeups = []) {
-  const PHYSICAL = new Set(['V', 'L', 'ML']);
-  const ABSENT   = new Set(['A', 'O', 'LL']);
+  const PHYSICAL = new Set(['V', 'L', 'ML', 'D', 'N']);
+  const ABSENT   = new Set(['A', 'O', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3']);
   const MAKEUP   = new Set(['M']);
 
   let physical = 0, absent = 0, makeup = 0, mlMakeup = 0;

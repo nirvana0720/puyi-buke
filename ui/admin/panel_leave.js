@@ -62,6 +62,7 @@
         ...m,
         phys:         statsMap[m.id]?.phys ?? null,
         total_absent: statsMap[m.id]?.total_absent ?? null,
+        x_count:      statsMap[m.id]?.x_count ?? 0,
       }));
       withStats.sort((a, b) => {
         const pa = a.phys ?? Infinity, pb = b.phys ?? Infinity;
@@ -77,6 +78,9 @@
         const absentBadge = m.total_absent != null
           ? `<span class="buke-badge ${m.total_absent > 3 ? 'danger' : m.total_absent > 0 ? 'warn' : 'makeup'}">缺課 ${m.total_absent} 堂</span>`
           : '';
+        const xWarnBadge = (active && m.x_count > 0)
+          ? `<span class="buke-badge danger">⚠️ 有中輟代碼 ×${m.x_count}，建議設為休學</span>`
+          : '';
         return `<div class="buke-card ${active ? '' : 'care'}"
                      style="margin-bottom:10px;opacity:${active ? 1 : 0.65}">
           <div class="row">
@@ -87,6 +91,7 @@
             <div style="display:flex;align-items:center;gap:8px">
               ${physBadge}
               ${absentBadge}
+              ${xWarnBadge}
               <span class="buke-badge ${active ? 'pass' : 'warn'}">${active ? '在學' : '休學'}</span>
               <button class="buke-btn ${active ? 'buke-btn-ghost' : ''} btn-toggle"
                       style="font-size:14px;padding:5px 14px;min-height:36px"

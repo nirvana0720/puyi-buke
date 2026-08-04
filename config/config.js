@@ -34,10 +34,10 @@ const CONFIG = {
 
   // === 標記碼分類（哪些碼算什麼，改規則只改這裡）===
   MARK: {
-    PHYSICAL_ATTEND: ['V', 'L', 'ML'],   // 實體出席
-    ABSENT: ['A', 'O', 'LL'],            // 缺課
+    PHYSICAL_ATTEND: ['V', 'L', 'ML', 'D', 'N'],   // 實體出席
+    ABSENT: ['A', 'O', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3'],  // 缺課
     MAKEUP_CREDIT: ['M'],                // 補課採計（不算實體出席）
-    ALL_VALID: ['V', 'L', 'ML', 'M', 'A', 'O', 'LL'],
+    ALL_VALID: ['V', 'L', 'ML', 'M', 'A', 'O', 'LL', 'E', 'D', 'N', 'W', 'X', 'F', 'S1', 'S2', 'S3'],
   },
 
   // === 結業門檻（依總堂數套用；>20 堂套 20 那列）===

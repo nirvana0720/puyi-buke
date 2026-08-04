@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   id            BIGSERIAL   PRIMARY KEY,
   member_ref    BIGINT      NOT NULL REFERENCES members(id) ON DELETE CASCADE,
   session_ref   BIGINT      NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  mark          TEXT        CHECK (mark IN ('V','L','ML','M','A','O','LL')),
+  mark          TEXT        CHECK (mark IN ('V','L','ML','M','A','O','LL','E','D','N','W','X','F','S1','S2','S3')),
   source        TEXT        NOT NULL DEFAULT 'api' CHECK (source IN ('api','manual')),
   checkin_time  TIMESTAMPTZ,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS settings (
   late_LL_max_min        INTEGER     NOT NULL DEFAULT 60,
   makeup_earliest_days   INTEGER     NOT NULL DEFAULT 7,
   makeup_deadline_weeks  INTEGER     NOT NULL DEFAULT 4,    -- 舊欄位，保留不用（實際計算改用 makeup_deadline_days）
-  makeup_required_marks  TEXT[]      NOT NULL DEFAULT ARRAY['O','LL','A'],
+  makeup_required_marks  TEXT[]      NOT NULL DEFAULT ARRAY['O','LL','A','E','W','X','S1','S2','S3'],
   makeup_earliest_mode   TEXT        DEFAULT '下週一' CHECK (makeup_earliest_mode IN ('下週一','缺課後N天')),
   makeup_time_slots      JSONB,                              -- 每日開放補課時段，例：[{"day":"週六","start":"13:00","end":"17:00"}]
   makeup_notice          TEXT,
@@ -646,7 +646,7 @@ BEGIN
             AND a.mark = ANY(
               COALESCE(
                 (SELECT makeup_required_marks FROM settings WHERE class_ref IS NULL LIMIT 1),
-                ARRAY['O','LL','A']
+                ARRAY['O','LL','A','E','W','X','S1','S2','S3']
               )
             )
             AND NOT EXISTS (
@@ -1546,7 +1546,8 @@ RETURNS TABLE(
   diligent       text,
   total_absent   int,
   overdue_absent int,
-  overdue_dates  date[]
+  overdue_dates  date[],
+  x_count        int
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1556,12 +1557,12 @@ DECLARE
   v_deadline_days   int;
   v_required_marks  text[];
 BEGIN
-  SELECT COALESCE(s.makeup_deadline_days, 40), COALESCE(s.makeup_required_marks, ARRAY['O','LL','A'])
+  SELECT COALESCE(s.makeup_deadline_days, 40), COALESCE(s.makeup_required_marks, ARRAY['O','LL','A','E','W','X','S1','S2','S3'])
   INTO v_deadline_days, v_required_marks
   FROM settings s WHERE s.class_ref IS NULL LIMIT 1;
 
   IF v_deadline_days IS NULL THEN v_deadline_days := 40; END IF;
-  IF v_required_marks IS NULL THEN v_required_marks := ARRAY['O','LL','A']; END IF;
+  IF v_required_marks IS NULL THEN v_required_marks := ARRAY['O','LL','A','E','W','X','S1','S2','S3']; END IF;
 
   RETURN QUERY
   WITH base AS (
@@ -1574,10 +1575,11 @@ BEGIN
       m.group_id,
       c.total_sessions                                                        AS total,
       LEAST(c.total_sessions, 20)                                             AS cap,
-      COUNT(a.id) FILTER (WHERE a.mark IN ('V','L','ML'))::int                AS phys,
-      COUNT(a.id) FILTER (WHERE a.mark IN ('A','O','LL'))::int                AS absent,
+      COUNT(a.id) FILTER (WHERE a.mark IN ('V','L','ML','D','N'))::int        AS phys,
+      COUNT(a.id) FILTER (WHERE a.mark IN ('A','O','LL','E','W','X','S1','S2','S3'))::int AS absent,
       COUNT(a.id) FILTER (WHERE a.mark = 'M')::int                            AS makeup,
       COUNT(a.id) FILTER (WHERE a.mark = 'ML')::int                           AS ml_makeup,
+      COUNT(a.id) FILTER (WHERE a.mark = 'X')::int                            AS x_count,
       (
         COUNT(a.id) FILTER (WHERE a.mark IS NOT NULL) > 0
         AND COUNT(a.id) FILTER (WHERE a.mark <> 'V') = 0
@@ -1633,7 +1635,8 @@ BEGIN
     END                                                                        AS diligent,
     (b.absent + b.makeup + b.ml_makeup)                                       AS total_absent,
     b.overdue_absent,
-    COALESCE(b.overdue_dates, ARRAY[]::date[])                                AS overdue_dates
+    COALESCE(b.overdue_dates, ARRAY[]::date[])                                AS overdue_dates,
+    b.x_count
   FROM base b
   ORDER BY b.class_name, b.group_id NULLS LAST, b.name;
 END;
@@ -1947,8 +1950,8 @@ DECLARE
   v_had_makeup     boolean := false;
   v_makeup_deleted boolean := false;
 BEGIN
-  IF p_new_mark NOT IN ('V','L','ML','M','A','O','LL') THEN
-    RAISE EXCEPTION '無效的出缺勤標記：%（應為 V/L/ML/M/A/O/LL 之一）', p_new_mark;
+  IF p_new_mark NOT IN ('V','L','ML','M','A','O','LL','E','D','N','W','X','F','S1','S2','S3') THEN
+    RAISE EXCEPTION '無效的出缺勤標記：%（應為 V/L/ML/M/A/O/LL/E/D/N/W/X/F/S1/S2/S3 之一）', p_new_mark;
   END IF;
 
   SELECT id, member_ref, session_ref, mark
@@ -2464,7 +2467,7 @@ BEGIN
   LEFT JOIN makeups mk ON mk.member_ref = a.member_ref AND mk.session_ref = a.session_ref
   CROSS JOIN LATERAL (
     SELECT s.date + COALESCE(st.makeup_deadline_days, 40) AS deadline_date,
-           COALESCE(st.makeup_required_marks, ARRAY['O','LL','A']) AS makeup_required_marks
+           COALESCE(st.makeup_required_marks, ARRAY['O','LL','A','E','W','X','S1','S2','S3']) AS makeup_required_marks
     FROM settings st WHERE st.class_ref IS NULL LIMIT 1
   ) dl
   WHERE a.member_ref = p_member_ref
@@ -2997,7 +3000,7 @@ BEGIN
               -- 不小心把 重構27 這個公式修正蓋掉了，一直沒被發現。改回缺課日+天數，
               -- 跟 register_makeup／kiosk_edit_makeup 等其他地方一致。
               SELECT s.date + COALESCE(st.makeup_deadline_days, 40) AS deadline_date,
-                     COALESCE(st.makeup_required_marks, ARRAY['O','LL','A']) AS makeup_required_marks
+                     COALESCE(st.makeup_required_marks, ARRAY['O','LL','A','E','W','X','S1','S2','S3']) AS makeup_required_marks
               FROM settings st WHERE st.class_ref IS NULL LIMIT 1
             ) dl
             WHERE a.member_ref = m.id AND a.mark = ANY (dl.makeup_required_marks)
