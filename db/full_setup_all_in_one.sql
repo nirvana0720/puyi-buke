@@ -1642,6 +1642,38 @@ BEGIN
 END;
 $$;
 
+-- ── 7.6b 後台顯示最新同步時間（讀 cron_sync_log，2026-08-04 新增）───
+CREATE OR REPLACE FUNCTION admin_get_sync_status()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_last_run TIMESTAMPTZ;
+  v_ok       INT;
+  v_fail     INT;
+BEGIN
+  SELECT MAX(run_at) INTO v_last_run FROM cron_sync_log;
+  IF v_last_run IS NULL THEN
+    RETURN jsonb_build_object('last_run_at', NULL, 'ok_count', 0, 'fail_count', 0);
+  END IF;
+
+  SELECT
+    COUNT(*) FILTER (WHERE ok = true),
+    COUNT(*) FILTER (WHERE ok = false)
+  INTO v_ok, v_fail
+  FROM cron_sync_log
+  WHERE run_at >= v_last_run - INTERVAL '2 minutes';
+
+  RETURN jsonb_build_object(
+    'last_run_at', v_last_run,
+    'ok_count',    v_ok,
+    'fail_count',  v_fail
+  );
+END;
+$$;
+
 -- ── 7.7 補課完成／取消完成／後台補登 ───────────────────────
 CREATE OR REPLACE FUNCTION complete_makeup(
   p_makeup_id      bigint,
@@ -4035,6 +4067,7 @@ REVOKE EXECUTE ON FUNCTION admin_transfer_set_ctis_updated(bigint, boolean)     
 REVOKE EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)                                FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION admin_get_sync_status()                                                          FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION admin_student_stats(bigint)                                                     TO authenticated;
 GRANT  EXECUTE ON FUNCTION complete_makeup(bigint, date)                                                    TO authenticated;
 GRANT  EXECUTE ON FUNCTION uncomplete_makeup(bigint)                                                        TO authenticated;
@@ -4048,6 +4081,7 @@ GRANT  EXECUTE ON FUNCTION admin_transfer_set_ctis_updated(bigint, boolean)     
 GRANT  EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)                                TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       TO authenticated;
+GRANT  EXECUTE ON FUNCTION admin_get_sync_status()                                                          TO authenticated;
 
 -- 8.6 義工帳號
 REVOKE EXECUTE ON FUNCTION create_staff(text, text, text, text) FROM PUBLIC;

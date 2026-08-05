@@ -142,6 +142,7 @@
 <header class="buke-header" style="position:sticky;top:0;z-index:10">
   <div class="title">課務系統</div>
   <div style="display:flex;gap:10px;align-items:center">
+    <span class="buke-chip" id="chip-sync-status" style="display:none;cursor:pointer" title="點擊重新查詢"></span>
     <span class="buke-chip" id="chip-email" style="display:none"></span>
     <button class="logout-btn" id="btn-logout" style="display:none">登出</button>
   </div>
@@ -272,6 +273,41 @@
     } catch (e) { /* 靜默失敗，不影響主流程 */ }
   }
   checkManualWarning();
+
+  // ── 「最新同步時間」chip（登入就看到，點擊可重新查一次）────────
+  function formatSyncRelative(ts) {
+    const diffMin = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 60000));
+    if (diffMin < 60) return `${diffMin} 分鐘前`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} 小時前`;
+    return `${Math.floor(diffHr / 24)} 天前`;
+  }
+
+  async function loadSyncStatus() {
+    const chip = document.getElementById('chip-sync-status');
+    if (!chip) return;
+    try {
+      const { data, error } = await sb.rpc('admin_get_sync_status');
+      if (error || !data) return;
+      const { last_run_at, ok_count, fail_count } = data;
+      if (!last_run_at) {
+        chip.textContent = '尚無同步紀錄';
+        chip.style.background = '#fdecea';
+        chip.style.color = '#611a15';
+      } else if (fail_count > 0) {
+        chip.textContent = `同步：${formatSyncRelative(last_run_at)}（${ok_count} OK／${fail_count} 失敗）`;
+        chip.style.background = '#fff3cd';
+        chip.style.color = '#7a5b00';
+      } else {
+        chip.textContent = `同步：${formatSyncRelative(last_run_at)}（${ok_count} 班 OK）`;
+        chip.style.background = '';
+        chip.style.color = '';
+      }
+      chip.style.display = '';
+    } catch (e) { /* 靜默失敗，不影響主流程 */ }
+  }
+  document.getElementById('chip-sync-status')?.addEventListener('click', loadSyncStatus);
+  loadSyncStatus();
 
   // ── 選單路由 ─────────────────────────────────────────────
   const panelEl = document.getElementById('panel-content');
