@@ -30,12 +30,12 @@
                  value="${v.class_name || ''}" placeholder="例：二夜中級班">
         </label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-          <label style="font-size:15px">星期
+          <label style="font-size:15px">星期 <span style="color:var(--danger-tx)">＊必填</span>
             <select class="buke-select f-dow" style="margin-top:4px">
               <option value="">—</option>${dayOpts}
             </select>
           </label>
-          <label style="font-size:15px">日/夜
+          <label style="font-size:15px">日/夜 <span style="color:var(--danger-tx)">＊必填</span>
             <select class="buke-select f-dn" style="margin-top:4px">
               <option value="">—</option>
               <option${v.day_night === '日' ? ' selected' : ''}>日</option>
@@ -46,6 +46,10 @@
             <input class="buke-input f-total" type="number" min="1"
                    style="margin-top:4px;width:80px" value="${totalVal}">
           </label>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">
+          ⚠️ 星期／日夜請務必填寫：匯入資料時的「檔名跟目標班兜不起來」防呆會用到這兩個
+          欄位比對，沒填會讓防呆失效。
         </div>
         <div class="grad-hint" style="font-size:13px;color:var(--muted);
              background:var(--surface);border-radius:var(--r-md);
@@ -464,6 +468,10 @@
       card.querySelector('.btn-save-class').addEventListener('click', async () => {
         const fields = readForm(card);
         if (!fields.class_name) { card.querySelector('.form-msg').textContent = '班名不可空白'; return; }
+        if (!fields.day_of_week || !fields.day_night) {
+          card.querySelector('.form-msg').textContent = '星期／日夜請務必選擇，匯入防呆需要用到這兩個欄位';
+          return;
+        }
         try {
           await updateClass(sb, cls.id, fields);
           onRefresh();
@@ -556,6 +564,10 @@
         formWrap.querySelector('.btn-save-class').addEventListener('click', async () => {
           const fields = readForm(formWrap);
           if (!fields.class_name) { formWrap.querySelector('.form-msg').textContent = '班名不可空白'; return; }
+          if (!fields.day_of_week || !fields.day_night) {
+            formWrap.querySelector('.form-msg').textContent = '星期／日夜請務必選擇，匯入防呆需要用到這兩個欄位';
+            return;
+          }
           try {
             await insertClass(sb, fields);
             formWrap.innerHTML = '';

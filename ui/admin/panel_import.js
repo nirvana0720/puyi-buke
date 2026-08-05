@@ -302,21 +302,50 @@
     }));
   }
 
-  /** 步驟 4：檔名跟目標班別兜不起來偵測（回傳警示文字陣列，可能同時有多筆） */
+  /** 步驟 4：檔名跟目標班別兜不起來偵測（回傳警示文字陣列，可能同時有多筆）
+   *  比對順序：① 完整班名 ② 星期＋日夜關鍵字（例如「三夜」，涵蓋上課紀錄檔名慣例
+   *  「星期＋日夜」但沒有寫完整班名的情況，2026-08-05 因應普高事件新增）
+   *  ③ 純日/夜字樣（備援，只有目標班還沒填「星期」欄位時才用這條） */
+  function dowKeyword(c) {
+    return (c && c.day_of_week && c.day_night) ? `${c.day_of_week}${c.day_night}` : null;
+  }
+
   function checkFileNameMismatch(fileName, targetClass, classes) {
     const warnings = [];
     if (!fileName || !targetClass) return warnings;
 
-    const otherMatch = classes.find(c =>
+    // ① 完整班名比對
+    const otherNameMatch = classes.find(c =>
       c.id !== targetClass.id && c.class_name && fileName.includes(c.class_name));
     const targetNameInFile = fileName.includes(targetClass.class_name);
 
-    if (otherMatch && !targetNameInFile) {
+    if (otherNameMatch && !targetNameInFile) {
       warnings.push(
-        `⚠️ 上傳的檔案名稱「${fileName}」看起來對應到「${otherMatch.class_name}」，` +
+        `⚠️ 上傳的檔案名稱「${fileName}」看起來對應到「${otherNameMatch.class_name}」，` +
         `但目前選的目標班別是「${targetClass.class_name}」，請確認有沒有選錯。`
       );
-    } else {
+      return warnings;
+    }
+
+    // ② 星期＋日夜關鍵字比對（例如檔名含「三夜」，但目標班是「二夜」）
+    const targetKw = dowKeyword(targetClass);
+    const otherDowMatch = classes.find(c => {
+      if (c.id === targetClass.id) return false;
+      const kw = dowKeyword(c);
+      return kw && fileName.includes(kw);
+    });
+    if (otherDowMatch && !(targetKw && fileName.includes(targetKw))) {
+      const otherKw = dowKeyword(otherDowMatch);
+      warnings.push(
+        `⚠️ 檔案名稱裡含有「${otherKw}」，看起來對應到「${otherDowMatch.class_name}」` +
+        `（星期${otherDowMatch.day_of_week}・${otherDowMatch.day_night}班），但目前選的目標班別是` +
+        `「${targetClass.class_name}」，請確認有沒有選錯。`
+      );
+      return warnings;
+    }
+
+    // ③ 純日/夜字樣比對（備援：目標班還沒補「星期」欄位時才用這條）
+    if (!targetClass.day_of_week) {
       const hasDay   = fileName.includes('日');
       const hasNight = fileName.includes('夜');
       if (targetClass.day_night === '夜' && hasDay && !hasNight) {
@@ -420,6 +449,19 @@
       warnEl.innerHTML = allWarnings
         .map(w => `<div class="buke-msg err" style="margin-bottom:8px">${w}</div>`)
         .join('');
+
+      // 檔名跟目標班兜不起來：直接擋掉，不給勾選繞過（2026-08-05 決定，起因普高把
+      // 兩班的上課紀錄合併匯進同一班；跟「跨班重疊」那種警示不同，這種不留手動確認的後路）
+      if (fileNameWarnings.length) {
+        gateEl.innerHTML = `
+          <div class="buke-msg err" style="margin:10px 0">
+            ❌ 檔案名稱跟選擇的目標班別對不起來，為避免匯錯班，無法匯入。
+            請確認檔案內容，或重新選擇正確的目標班別後再上傳。
+          </div>`;
+        confirmBtn.disabled = true;
+        return;
+      }
+
       if (allWarnings.length) {
         gateEl.innerHTML = `
           <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:10px 0;cursor:pointer">
