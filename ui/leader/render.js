@@ -160,6 +160,8 @@ function buildGroupedRiskSection(active, needCredit, leaderDbId, sb) {
 function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
   const card = document.createElement('div');
   card.className = `buke-card ${sectionCls}`;
+  // 供搜尋框比對用（人多的班要能直接打名字/法名找人，見 filterBoardByName）
+  card.dataset.search = `${m.name || ''} ${m.dharma_name || ''}`.toLowerCase();
 
   const badgeText = sectionCls === 'care' ? '紅燈'
     : sectionCls === 'pass' ? '達標' : '上課中';
@@ -257,6 +259,7 @@ function buildClosedSection(members) {
     const card = document.createElement('div');
     card.className = 'buke-card';
     card.style.opacity = '0.6';
+    card.dataset.search = `${m.name || ''} ${m.dharma_name || ''}`.toLowerCase();
     card.innerHTML = `
       <div class="row">
         <div>
@@ -273,5 +276,32 @@ function buildClosedSection(members) {
   return wrap;
 }
 
-if (typeof window !== 'undefined') window.Render = { renderBoard };
-if (typeof module !== 'undefined') module.exports = { renderBoard };
+/**
+ * 依姓名/法名關鍵字篩選看板上的學員卡片（人多的班用來直接找人）
+ * 通用做法：找出每個 .buke-grid，過濾裡面的 .buke-card；卡片一個都不剩就把
+ * 這個 grid 跟它前一個手足元素（各區塊/組別標題，都是 .buke-section）一起藏起來，
+ * 不用去改 renderBoard 產生分組/分區塊的結構。
+ */
+function filterBoardByName(query) {
+  const board = document.getElementById('board');
+  if (!board) return;
+  const q = (query || '').trim().toLowerCase();
+
+  board.querySelectorAll('.buke-grid').forEach(grid => {
+    let anyVisible = false;
+    grid.querySelectorAll('.buke-card').forEach(card => {
+      const match = !q || (card.dataset.search || '').includes(q);
+      card.style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+    });
+    const showGroup = !q || anyVisible;
+    grid.style.display = showGroup ? '' : 'none';
+    const header = grid.previousElementSibling;
+    if (header && header.classList.contains('buke-section')) {
+      header.style.display = showGroup ? '' : 'none';
+    }
+  });
+}
+
+if (typeof window !== 'undefined') window.Render = { renderBoard, filterBoardByName };
+if (typeof module !== 'undefined') module.exports = { renderBoard, filterBoardByName };
