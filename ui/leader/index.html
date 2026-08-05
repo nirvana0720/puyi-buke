@@ -29,8 +29,6 @@
   <div class="buke-toolbar">
     <button id="btn-load" class="buke-btn">載入</button>
     <button id="btn-refresh" class="buke-btn buke-btn-ghost" style="display:none">🔄 重新整理</button>
-    <input id="search-student" class="buke-input" type="search" placeholder="🔍 搜尋姓名／法名…"
-           style="display:none;max-width:220px;margin-left:auto">
   </div>
 
   <div id="status"></div>
@@ -59,12 +57,11 @@
   const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY,
     { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const { fetchStudentStatsViaRpc } = window.BoardLogic;
-  const { renderBoard, filterBoardByName } = window.Render;
+  const { renderBoard } = window.Render;
 
   const statusEl     = document.getElementById('status');
   const btnLoad      = document.getElementById('btn-load');
   const btnRefresh   = document.getElementById('btn-refresh');
-  const searchInput  = document.getElementById('search-student');
 
   // 顯示角色資訊
   const scopeLabel = sess.role === '班長' ? '班長（整班）'
@@ -84,8 +81,6 @@
     statusEl.textContent = '載入中…';
     document.getElementById('board').innerHTML = '';
     btnRefresh.style.display = '';
-    searchInput.style.display = 'none';
-    searchInput.value = '';
 
     try {
       const rows = await fetchStudentStatsViaRpc(sb, sess.member_db_id, sess.role);
@@ -93,8 +88,6 @@
       statusEl.textContent =
         `已載入 ${rows.length} 位學員（${new Date().toLocaleTimeString('zh-TW')}）`;
       renderBoard(rows, modeLabel);
-      // 人多的班找人不方便，載入完才顯示搜尋框（避免板還沒畫出來就能打字）
-      if (rows.length > 0) searchInput.style.display = '';
     } catch (e) {
       statusEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
     }
@@ -102,7 +95,6 @@
 
   btnLoad.addEventListener('click', loadBoard);
   btnRefresh.addEventListener('click', loadBoard);
-  searchInput.addEventListener('input', () => filterBoardByName(searchInput.value));
 
   // 自動載入
   await loadBoard();

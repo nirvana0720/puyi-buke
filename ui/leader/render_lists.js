@@ -127,6 +127,7 @@ function buildRedLightList(active, mode) {
   for (const r of redRows) {
     const gap = Math.max(0, r.need_credit - r.total_credit);
     const tr = document.createElement('tr');
+    tr.dataset.search = `${r.name || ''} ${r.dharma_name || ''}`.toLowerCase();
     const groupTd = showGroup ? `<td style="padding:5px 8px">${r.group_id || ''}</td>` : '';
     tr.innerHTML = `
       ${groupTd}

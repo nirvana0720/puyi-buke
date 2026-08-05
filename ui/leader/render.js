@@ -80,6 +80,17 @@ function renderBoard(rows, mode, leaderDbId, sb) {
   // ── 缺課未登記表（render_lists.js）──────────────────────────
   if (unregistered.length) container.appendChild(buildUnregisteredSection(unregistered, mode, leaderDbId, sb));
 
+  // ── 搜尋框：緊接在下方卡片牆之前，人多的班找人用（2026-08-05）───
+  // 放在這裡（不是頁面最上方）是刻意的：搜尋框跟它篩選的卡片牆黏在一起，
+  // 打字馬上看得到下面的結果，不用往下滑一段距離才知道有沒有反應。
+  const searchWrap = document.createElement('div');
+  searchWrap.style.cssText = 'margin:16px 0 8px';
+  searchWrap.innerHTML = `
+    <input id="board-search" class="buke-input" type="search" placeholder="🔍 搜尋姓名／法名…"
+           style="max-width:240px">`;
+  container.appendChild(searchWrap);
+  searchWrap.querySelector('#board-search').addEventListener('input', e => filterBoardByName(e.target.value));
+
   // ── 風險卡片區：班長依組別，學長攤平三色段 ──────────────────
   if (mode === 'class') {
     container.appendChild(buildGroupedRiskSection(active, needCredit, leaderDbId, sb));
