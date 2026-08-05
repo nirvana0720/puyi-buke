@@ -312,16 +312,26 @@
 
   // ── 學長/班長視圖 ────────────────────────────────────────
   async function loadLeaderView(cls, container, statusEl) {
-    container.innerHTML = '<div id="board"></div>';
+    container.innerHTML = `
+      <input id="search-student" class="buke-input" type="search" placeholder="🔍 搜尋姓名／法名…"
+             style="display:none;max-width:220px;margin-bottom:10px">
+      <div id="board"></div>`;
 
     const { fetchStudentStatsViaRpc } = window.BoardLogic;
-    const { renderBoard } = window.Render;
+    const { renderBoard, filterBoardByName } = window.Render;
 
     const rows = await fetchStudentStatsViaRpc(sb, cls.member_db_id, cls.role);
     const mode = cls.role === '班長' ? 'class' : 'leader';
     renderBoard(rows, mode, cls.member_db_id, sb);
     statusEl.textContent =
       `已載入 ${rows.length} 位學員（${new Date().toLocaleTimeString('zh-TW')}）`;
+
+    // 人多的班找人不方便，載入完才顯示搜尋框
+    const searchInput = container.querySelector('#search-student');
+    if (searchInput && rows.length > 0) {
+      searchInput.style.display = '';
+      searchInput.addEventListener('input', () => filterBoardByName(searchInput.value));
+    }
   }
 
   // 預設載入第一個分頁
