@@ -176,6 +176,23 @@ async function deleteSession(sb, id) {
   if (error) throw new Error(`刪除堂次失敗：${error.message}`);
 }
 
+/** 新增一堂（走 RLS auth_all_sessions 政策，不需 SECURITY DEFINER 函式）；is_held 固定為 false */
+async function insertSession(sb, classRef, { date, week_num }) {
+  const { error } = await sb
+    .from('sessions')
+    .insert({ class_ref: classRef, date, week_num, is_held: false });
+  if (error) throw new Error(`新增堂次失敗：${error.message}`);
+}
+
+/** 整批順延：從 fromWeek 開始（含）的所有堂次日期整批 +days 天（days 可為負數） */
+async function postponeSessions(sb, classRef, fromWeek, days) {
+  const { data, error } = await sb.rpc('admin_postpone_sessions', {
+    p_class_ref: classRef, p_from_week: fromWeek, p_days: days,
+  });
+  if (error) throw new Error(`整批順延失敗：${error.message}`);
+  return data;
+}
+
 // ── 學員 ─────────────────────────────────────────────────────
 
 const STUDENT_STATS_PAGE_SIZE = 1000;
@@ -281,7 +298,7 @@ if (typeof window !== 'undefined') {
     fetchClasses, fetchGroups, compareGroupNames, compareClassSchedule,
     updateClass, insertClass, archiveClass, activateClass,
     bindClassId, findClassByClassId,
-    fetchSessions, updateSession, deleteSession,
+    fetchSessions, updateSession, deleteSession, insertSession, postponeSessions,
     fetchMembersWithStatus, setMemberStatusLocal, fetchAllStudentStats,
     fetchAssignments, setBaseRole, toggleRollcallRole,
   };

@@ -5,6 +5,7 @@
 
 (function () {
   const { fetchClasses, updateClass, insertClass, archiveClass, activateClass, fetchSessions, updateSession, deleteSession,
+          insertSession, postponeSessions,
           bindClassId, findClassByClassId, compareClassSchedule } = window.AdminData;
 
   const DAY_OPTS = ['一','二','三','四','五','六','日'];
@@ -89,13 +90,33 @@
     };
   }
 
-  /** 渲染堂次管理表格（inline 逐列儲存，改一堂不整面板重整；刪除則重抓整班堂次重繪表格） */
-  function renderSessionsTable(sb, area, sessions, classRef) {
-    if (!sessions.length) {
-      area.innerHTML = '<p class="buke-empty" style="font-size:13px">尚無堂次資料。</p>';
-      return;
-    }
-    area.innerHTML = `
+  /** 渲染堂次管理表格（inline 逐列儲存，改一堂不整面板重整；刪除/新增/整批順延則重抓整班堂次重繪表格）
+   *  @param {object} cls 該班別完整物件（需含 id／class_name／total_sessions，供整批順延下拉與
+   *         「新增一堂」後比對 total_sessions 用） */
+  function renderSessionsTable(sb, area, sessions, cls) {
+    const classRef = cls.id;
+
+    const weekOpts = sessions.map(s => `<option value="${s.week_num}">第 ${s.week_num} 堂（${s.date}）</option>`).join('');
+
+    const postponeHtml = sessions.length ? `
+      <div class="postpone-wrap" style="margin-bottom:10px">
+        <button class="buke-btn buke-btn-ghost btn-toggle-postpone" style="font-size:13px">整批順延</button>
+        <div class="postpone-form" style="display:none;margin-top:8px;padding:10px;
+             background:var(--bg);border-radius:var(--r-md)">
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <label style="font-size:13px">從第幾堂開始
+              <select class="buke-select f-postpone-week" style="margin-top:4px">${weekOpts}</select>
+            </label>
+            <label style="font-size:13px">順延天數
+              <input type="number" class="buke-input f-postpone-days" value="7" style="margin-top:4px;width:80px">
+            </label>
+            <button class="buke-btn btn-apply-postpone" style="font-size:13px">套用</button>
+          </div>
+          <div class="postpone-msg" style="font-size:13px;margin-top:6px"></div>
+        </div>
+      </div>` : '';
+
+    const tableHtml = sessions.length ? `
       <table style="width:100%;border-collapse:collapse;font-size:0.9em">
         <thead><tr style="background:var(--surface-alt)">
           <th style="padding:5px 8px;text-align:left">第幾堂</th>
@@ -118,53 +139,133 @@
             </td>
           </tr>`).join('')}
         </tbody>
-      </table>`;
+      </table>` : '<p class="buke-empty" style="font-size:13px">尚無堂次資料。</p>';
 
-    area.querySelectorAll('[data-srow]').forEach((row, i) => {
-      const s = sessions[i];
-      row.querySelector('.btn-save-session').addEventListener('click', async () => {
-        const btn   = row.querySelector('.btn-save-session');
-        const msgEl = row.querySelector('.s-msg');
-        const date  = row.querySelector('.f-sdate').value;
-        const held  = row.querySelector('.f-sheld').checked;
-        if (!date) { msgEl.textContent = '請選擇日期'; msgEl.style.color = 'var(--danger-tx)'; return; }
-        btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
-        try {
-          await updateSession(sb, s.id, { date, is_held: held });
-          msgEl.textContent = '✅ 已更新'; msgEl.style.color = 'var(--ok-tx)';
-        } catch (e) {
-          msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
-        } finally {
-          btn.disabled = false;
-        }
-      });
+    area.innerHTML = `
+      ${postponeHtml}
+      ${tableHtml}
+      <div class="add-session-wrap" style="margin-top:10px;padding:10px;
+           background:var(--bg);border-radius:var(--r-md)">
+        <div style="font-size:14px;margin-bottom:6px">新增一堂</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <label style="font-size:13px">日期
+            <input type="date" class="buke-input f-add-date" style="margin-top:4px">
+          </label>
+          <button class="buke-btn btn-add-session" style="font-size:13px">新增</button>
+        </div>
+        <div class="add-session-msg" style="font-size:13px;margin-top:6px"></div>
+      </div>`;
 
-      row.querySelector('.btn-delete-session').addEventListener('click', async () => {
-        const btn   = row.querySelector('.btn-delete-session');
-        const msgEl = row.querySelector('.s-msg');
-        const confirmMsg = s.is_held
-          ? '這堂已有出缺勤/補課資料，刪除後這些紀錄會一併消失且無法復原，確定要刪除嗎？'
-          : '確定要刪除這堂嗎？';
-        if (!confirm(confirmMsg)) return;
-        btn.disabled = true; msgEl.textContent = '刪除中…'; msgEl.style.color = 'var(--muted)';
-        try {
-          await deleteSession(sb, s.id);
-          const updated = await fetchSessions(sb, classRef);
-          // 刪除後重新編號「第幾堂」，維持連續（1,2,3…），避免畫面上出現跳號造成誤會；
-          // week_num 只是顯示標籤，這裡重排不影響任何缺課/補課/結業的統計邏輯。
-          for (let idx = 0; idx < updated.length; idx++) {
-            const wantedNum = idx + 1;
-            if (updated[idx].week_num !== wantedNum) {
-              await updateSession(sb, updated[idx].id, { week_num: wantedNum });
-              updated[idx].week_num = wantedNum;
-            }
+    if (sessions.length) {
+      area.querySelectorAll('[data-srow]').forEach((row, i) => {
+        const s = sessions[i];
+        row.querySelector('.btn-save-session').addEventListener('click', async () => {
+          const btn   = row.querySelector('.btn-save-session');
+          const msgEl = row.querySelector('.s-msg');
+          const date  = row.querySelector('.f-sdate').value;
+          const held  = row.querySelector('.f-sheld').checked;
+          if (!date) { msgEl.textContent = '請選擇日期'; msgEl.style.color = 'var(--danger-tx)'; return; }
+          btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
+          try {
+            await updateSession(sb, s.id, { date, is_held: held });
+            msgEl.textContent = '✅ 已更新'; msgEl.style.color = 'var(--ok-tx)';
+          } catch (e) {
+            msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
+          } finally {
+            btn.disabled = false;
           }
-          renderSessionsTable(sb, area, updated, classRef);
+        });
+
+        row.querySelector('.btn-delete-session').addEventListener('click', async () => {
+          const btn   = row.querySelector('.btn-delete-session');
+          const msgEl = row.querySelector('.s-msg');
+          const confirmMsg = s.is_held
+            ? '這堂已有出缺勤/補課資料，刪除後這些紀錄會一併消失且無法復原，確定要刪除嗎？'
+            : '確定要刪除這堂嗎？';
+          if (!confirm(confirmMsg)) return;
+          btn.disabled = true; msgEl.textContent = '刪除中…'; msgEl.style.color = 'var(--muted)';
+          try {
+            await deleteSession(sb, s.id);
+            const updated = await fetchSessions(sb, classRef);
+            // 刪除後重新編號「第幾堂」，維持連續（1,2,3…），避免畫面上出現跳號造成誤會；
+            // week_num 只是顯示標籤，這裡重排不影響任何缺課/補課/結業的統計邏輯。
+            for (let idx = 0; idx < updated.length; idx++) {
+              const wantedNum = idx + 1;
+              if (updated[idx].week_num !== wantedNum) {
+                await updateSession(sb, updated[idx].id, { week_num: wantedNum });
+                updated[idx].week_num = wantedNum;
+              }
+            }
+            renderSessionsTable(sb, area, updated, cls);
+          } catch (e) {
+            msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
+            btn.disabled = false;
+          }
+        });
+      });
+
+      // 整批順延（停課/颱風假：從某一堂開始，後面所有堂次日期整批 ±天數，避免逐筆改撞到 UNIQUE(class_ref,date)）
+      const toggleBtn  = area.querySelector('.btn-toggle-postpone');
+      const postponeEl = area.querySelector('.postpone-form');
+      toggleBtn.addEventListener('click', () => {
+        postponeEl.style.display = postponeEl.style.display === 'none' ? '' : 'none';
+      });
+
+      area.querySelector('.btn-apply-postpone').addEventListener('click', async () => {
+        const btn      = area.querySelector('.btn-apply-postpone');
+        const msgEl    = area.querySelector('.postpone-msg');
+        const fromWeek = Number(area.querySelector('.f-postpone-week').value);
+        const days     = Number(area.querySelector('.f-postpone-days').value);
+        if (!days) { msgEl.textContent = '請輸入順延天數（不可為 0）'; msgEl.style.color = 'var(--danger-tx)'; return; }
+
+        const affected = sessions.filter(s => s.week_num >= fromWeek);
+        const hasHeld  = affected.some(s => s.is_held);
+        const confirmMsg = hasHeld
+          ? `這幾堂已有出缺勤/報到資料，順延日期後日期會跟著改，請確認：從第 ${fromWeek} 堂起共 ${affected.length} 堂，順延 ${days} 天，確定要套用嗎？`
+          : `確定要從第 ${fromWeek} 堂起共 ${affected.length} 堂，整批順延 ${days} 天嗎？`;
+        if (!confirm(confirmMsg)) return;
+
+        btn.disabled = true; msgEl.textContent = '套用中…'; msgEl.style.color = 'var(--muted)';
+        try {
+          await postponeSessions(sb, classRef, fromWeek, days);
+          const updated = await fetchSessions(sb, classRef);
+          renderSessionsTable(sb, area, updated, cls);
         } catch (e) {
           msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
           btn.disabled = false;
         }
       });
+    }
+
+    // 新增一堂
+    area.querySelector('.btn-add-session').addEventListener('click', async () => {
+      const btn   = area.querySelector('.btn-add-session');
+      const msgEl = area.querySelector('.add-session-msg');
+      const date  = area.querySelector('.f-add-date').value;
+      if (!date) { msgEl.textContent = '請選擇日期'; msgEl.style.color = 'var(--danger-tx)'; return; }
+      if (sessions.some(s => s.date === date)) {
+        msgEl.textContent = '這個日期已經有堂次了，請換一個日期'; msgEl.style.color = 'var(--danger-tx)'; return;
+      }
+      btn.disabled = true; msgEl.textContent = '新增中…'; msgEl.style.color = 'var(--muted)';
+      try {
+        const nextWeekNum = sessions.length ? Math.max(...sessions.map(s => s.week_num)) + 1 : 1;
+        await insertSession(sb, classRef, { date, week_num: nextWeekNum });
+        const updated = await fetchSessions(sb, classRef);
+        if (updated.length > (cls.total_sessions || 0)) {
+          const sync = confirm(
+            `目前共幾堂設定是 ${cls.total_sessions}，新增後已有 ${updated.length} 筆堂次，`
+            + `要不要一併把「共幾堂」改成 ${updated.length}？`
+          );
+          if (sync) {
+            await updateClass(sb, cls.id, { class_name: cls.class_name, total_sessions: updated.length });
+            cls.total_sessions = updated.length;
+          }
+        }
+        renderSessionsTable(sb, area, updated, cls);
+      } catch (e) {
+        msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
+        btn.disabled = false;
+      }
     });
   }
 
@@ -486,7 +587,7 @@
       sessionsArea.innerHTML = '<p class="buke-empty" style="font-size:13px">載入中…</p>';
       try {
         const sessions = await fetchSessions(sb, cls.id);
-        renderSessionsTable(sb, sessionsArea, sessions, cls.id);
+        renderSessionsTable(sb, sessionsArea, sessions, cls);
       } catch (e) {
         sessionsArea.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
       }

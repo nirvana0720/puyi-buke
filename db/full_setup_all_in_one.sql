@@ -1674,6 +1674,48 @@ BEGIN
 END;
 $$;
 
+-- ── 7.6c 堂次彈性調整：整批順延（docs/堂次彈性調整_規格.md，2026-08-10 新增）───
+-- 逐筆用 FOR LOOP 依 week_num 遠→近方向更新，避免撞到 UNIQUE(class_ref,date)
+CREATE OR REPLACE FUNCTION admin_postpone_sessions(
+  p_class_ref bigint, p_from_week int, p_days int
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int := 0;
+  v_row   RECORD;
+BEGIN
+  IF p_days = 0 THEN
+    RETURN jsonb_build_object('updated', 0);
+  END IF;
+
+  IF p_days > 0 THEN
+    FOR v_row IN
+      SELECT id FROM sessions
+      WHERE class_ref = p_class_ref AND week_num >= p_from_week
+      ORDER BY week_num DESC
+    LOOP
+      UPDATE sessions SET date = date + p_days WHERE id = v_row.id;
+      v_count := v_count + 1;
+    END LOOP;
+  ELSE
+    FOR v_row IN
+      SELECT id FROM sessions
+      WHERE class_ref = p_class_ref AND week_num >= p_from_week
+      ORDER BY week_num ASC
+    LOOP
+      UPDATE sessions SET date = date + p_days WHERE id = v_row.id;
+      v_count := v_count + 1;
+    END LOOP;
+  END IF;
+
+  RETURN jsonb_build_object('updated', v_count);
+END;
+$$;
+
 -- ── 7.7 補課完成／取消完成／後台補登 ───────────────────────
 CREATE OR REPLACE FUNCTION complete_makeup(
   p_makeup_id      bigint,
@@ -4068,6 +4110,7 @@ REVOKE EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)    
 REVOKE EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_get_sync_status()                                                          FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int)                                        FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION admin_student_stats(bigint)                                                     TO authenticated;
 GRANT  EXECUTE ON FUNCTION complete_makeup(bigint, date)                                                    TO authenticated;
 GRANT  EXECUTE ON FUNCTION uncomplete_makeup(bigint)                                                        TO authenticated;
@@ -4082,6 +4125,7 @@ GRANT  EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)    
 GRANT  EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_get_sync_status()                                                          TO authenticated;
+GRANT  EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int)                                        TO authenticated;
 
 -- 8.6 義工帳號
 REVOKE EXECUTE ON FUNCTION create_staff(text, text, text, text) FROM PUBLIC;
