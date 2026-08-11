@@ -47,10 +47,15 @@
             <input class="buke-input f-total" type="number" min="1"
                    style="margin-top:4px;width:80px" value="${totalVal}">
           </label>
+          <label style="font-size:15px">上課時間
+            <input class="buke-input f-start" type="time"
+                   style="margin-top:4px" value="${v.start_time ? String(v.start_time).slice(0,5) : ''}">
+          </label>
         </div>
         <div style="font-size:12px;color:var(--muted)">
           ⚠️ 星期／日夜請務必填寫：匯入資料時的「檔名跟目標班兜不起來」防呆會用到這兩個
-          欄位比對，沒填會讓防呆失效。
+          欄位比對，沒填會讓防呆失效。上課時間沒填的話，日夜補調班的學員在櫃台刷卡時，
+          系統會判斷不出遲到／準時，「補課／調課總覽」會顯示異常文字。
         </div>
         <div class="grad-hint" style="font-size:13px;color:var(--muted);
              background:var(--surface);border-radius:var(--r-md);
@@ -87,6 +92,7 @@
       day_night:      wrap.querySelector('.f-dn').value   || null,
       total_sessions: Number(wrap.querySelector('.f-total').value) || 20,
       teacher:        wrap.querySelector('.f-teacher').value.trim() || null,
+      start_time:     wrap.querySelector('.f-start').value || null,
     };
   }
 
