@@ -72,9 +72,14 @@ function renderUpcomingTransfers(containerEl, transfers, days) {
 }
 
 // ── 未來預約補課（一般補課＋培訓補課合併分組） ──────────────────────
-// makeups: [{makeup_id, member_name, class_name, session_date, planned_date, planned_slot, type:'補課'}]
+// makeups: [{makeup_id, member_name, class_name, session_ref, session_date, planned_date,
+//            planned_slot, earphone, note, type:'補課'}]
 // trainingMakeups: [{training_makeup_id, member_name, class_name, session_date, planned_date, planned_slot, type:'培訓補課'}]
-function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days) {
+// onEdit(makeupId, sessionRef, earphone, plannedDate, plannedSlot, note)：2026-08-13 新增。
+// 緣由：這裡其實是義工最常拿來找「不是今天」的補課登記的地方（照日期分組瀏覽，比用學員
+// 編號查詢更直覺），原本每一列純文字、完全沒有編輯入口。只給「補課」列加編輯按鈕，
+// 「培訓補課」走的是另一支表（training_makeups），不是 kiosk_edit_makeup 管的，先不處理。
+function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days, onEdit) {
   if (!containerEl) return;
   const all = [...(makeups || []), ...(trainingMakeups || [])];
   if (!all.length) {
@@ -94,16 +99,47 @@ function renderUpcomingMakeups(containerEl, makeups, trainingMakeups, days) {
     groups.get(m.planned_date).push(m);
   });
 
+  let rowSeq = 0;
+  const rowRefs = new Map(); // rowId -> m（供編輯按鈕事件用）
+
   containerEl.innerHTML = Array.from(groups.entries()).map(([date, rows]) => {
-    const rowsHtml = rows.map(m => `
-      <div class="kiosk-listrow">
-        <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・預約時間 ${m.planned_slot || ''}・缺課日期 ${_kupMD(m.session_date)}
-      </div>
-    `).join('');
+    const rowsHtml = rows.map(m => {
+      const canEdit = m.type === '補課' && m.makeup_id && onEdit;
+      const rowId = `kup-mk-${rowSeq++}`;
+      if (canEdit) rowRefs.set(rowId, m);
+      const editBtn = canEdit
+        ? `<button type="button" class="buke-btn" data-kup-edit="${rowId}"
+                   style="font-size:12px;padding:3px 10px;min-height:auto;margin-left:8px;
+                          background:var(--makeup-tx);border-radius:var(--r-pill)">編輯</button>`
+        : '';
+      return `
+        <div class="kiosk-listrow" id="${rowId}-row">
+          <strong>${m.member_name}</strong>・${m.class_name}${m.type === '培訓補課' ? '（培訓補課）' : ''}・預約時間 ${m.planned_slot || ''}・缺課日期 ${_kupMD(m.session_date)}${editBtn}
+          <div id="${rowId}-edit"></div>
+        </div>
+      `;
+    }).join('');
     return _kupGroupHtml(_kupGroupHeader(date), rowsHtml, rows.length);
   }).join('');
 
   _kupBindCollapse(containerEl);
+
+  containerEl.querySelectorAll('[data-kup-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const rowId = btn.dataset.kupEdit;
+      const m = rowRefs.get(rowId);
+      if (!m || !window.KioskRender) return;
+      window.KioskRender.toggleInlineMakeupEditForm(`${rowId}-edit`, m.class_name, {
+        makeup_id:    m.makeup_id,
+        session_ref:  m.session_ref,
+        date:         m.session_date,
+        planned_date: m.planned_date,
+        planned_slot: m.planned_slot,
+        earphone:     m.earphone,
+        note:         m.note,
+      }, onEdit);
+    });
+  });
 }
 
 if (typeof window !== 'undefined') {

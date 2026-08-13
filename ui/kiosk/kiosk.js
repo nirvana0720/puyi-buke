@@ -260,7 +260,15 @@ function todayStr() {
     el.innerHTML = '<p style="color:var(--muted);font-size:14px">載入中…</p>';
     try {
       const data = await kioskGetUpcomingRegistrations(sb, staff.staff_id, upcomingMakeupsDays);
-      window.KioskUpcomingRender.renderUpcomingMakeups(el, data.makeups, data.training_makeups, upcomingMakeupsDays);
+      window.KioskUpcomingRender.renderUpcomingMakeups(
+        el, data.makeups, data.training_makeups, upcomingMakeupsDays,
+        // 2026-08-13 新增：這裡本來就是義工找「不是今天」補課登記最直覺的地方，補上編輯入口
+        async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
+          await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
+          loadUpcomingMakeups(); // 改完日期可能移出/移進目前天數範圍，整組重載最保險
+          loadDay(datePicker.value); // 若改到今天，今日清單也同步更新
+        }
+      );
     } catch (err) {
       el.innerHTML = `<p class="buke-msg err">❌ ${err.message}</p>`;
     }
