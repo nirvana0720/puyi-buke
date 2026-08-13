@@ -92,14 +92,20 @@ function buildKpiSection(active, mode, urgentMakeups) {
  * @returns {HTMLElement}
  */
 function buildRedLightList(active, mode) {
-  const redRows = active.filter(r => r.red_light);
+  // 2026-08-13 補記：缺課堂數由多到少排序，最需要關懷的排最前面
+  // （原本沒有排序，順序是資料庫剛好回傳的順序，跟缺課堂數/姓名/組別都無關）
+  // 2026-08-13 補記：原本這裡沒有筆數上限，紅燈一多（例如 20 人）就會整批列出，
+  // 把頁面拉得很長。改用跟「缺課尚未登記補課」（buildUnregisteredSection）同一套
+  // 「預設只顯示前 5 筆＋顯示全部」做法，並在標題直接標出總人數，一眼看出規模。
+  const redRows = active.filter(r => r.red_light).sort((a, b) => (b.absent || 0) - (a.absent || 0));
+  const VISIBLE_COUNT = 5;
 
   const wrap = document.createElement('div');
   wrap.className = 'buke-section-block care';
 
   const h = document.createElement('div');
   h.className = 'buke-section care';
-  h.textContent = '🔴 需要關懷（缺課超過3堂）';
+  h.textContent = `🔴 需要關懷（缺課超過3堂，共 ${redRows.length} 人）`;
   wrap.appendChild(h);
 
   if (!redRows.length) {
@@ -113,7 +119,7 @@ function buildRedLightList(active, mode) {
   const showGroup = mode === 'class';
   const table = document.createElement('table');
   table.className = 'buke-table';
-  table.style.cssText = 'font-size:0.92em;margin-bottom:12px';
+  table.style.cssText = 'font-size:0.92em;margin-bottom:8px';
 
   const groupTh = showGroup ? '<th style="padding:6px 8px;text-align:left">組別</th>' : '';
   table.innerHTML = `<thead><tr>
@@ -123,8 +129,7 @@ function buildRedLightList(active, mode) {
     <th style="padding:6px 8px;text-align:left">距結業還差</th>
   </tr></thead>`;
 
-  const tbody = document.createElement('tbody');
-  for (const r of redRows) {
+  function buildRow(r) {
     const gap = Math.max(0, r.need_credit - r.total_credit);
     const tr = document.createElement('tr');
     tr.dataset.search = `${r.name || ''} ${r.dharma_name || ''}`.toLowerCase();
@@ -135,10 +140,37 @@ function buildRedLightList(active, mode) {
       <td style="padding:5px 8px;color:var(--danger)">${r.absent} 堂</td>
       <td style="padding:5px 8px">${gap} 堂</td>
     `;
-    tbody.appendChild(tr);
+    return tr;
   }
+
+  const visibleRows = redRows.slice(0, VISIBLE_COUNT);
+  const hiddenRows  = redRows.slice(VISIBLE_COUNT);
+
+  const tbody = document.createElement('tbody');
+  for (const r of visibleRows) tbody.appendChild(buildRow(r));
   table.appendChild(tbody);
+
+  let hiddenTbody = null;
+  if (hiddenRows.length) {
+    hiddenTbody = document.createElement('tbody');
+    hiddenTbody.style.display = 'none';
+    for (const r of hiddenRows) hiddenTbody.appendChild(buildRow(r));
+    table.appendChild(hiddenTbody);
+  }
+
   wrap.appendChild(table);
+
+  if (hiddenRows.length) {
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'buke-expand-btn';
+    expandBtn.textContent = `顯示全部 ${redRows.length} 筆 ▾`;
+    expandBtn.addEventListener('click', () => {
+      if (hiddenTbody) hiddenTbody.style.display = '';
+      expandBtn.remove();
+    });
+    wrap.appendChild(expandBtn);
+  }
+
   return wrap;
 }
 
@@ -165,11 +197,16 @@ function buildRegisteredMakeupSection(active, mode, leaderDbId, sb) {
   }
   items.sort((a, b) => (a.mk.planned_date || '').localeCompare(b.mk.planned_date || ''));
 
-  const wrap = document.createElement('div');
-  wrap.className = 'buke-section-block makeup';
-  const h = document.createElement('div');
+  // 2026-08-13 補記：良師父要求這區可收合、標題標共幾筆，人多的班這區也會拉很長。
+  // 整塊改成 <details>，標題列（<summary>）本身可點擊收合／展開，預設展開（維持原本
+  // 看得到的行為，只是現在多了能收起來的能力），樣式見 theme.css 的 .buke-collapsible。
+  const wrap = document.createElement('details');
+  wrap.className = 'buke-section-block makeup buke-collapsible';
+  wrap.open = true;
+  wrap.dataset.defaultOpen = '1'; // 搜尋清空後要還原成展開（見 render.js 的 filterBoardByName）
+  const h = document.createElement('summary');
   h.className = 'buke-section';
-  h.textContent = '📝 已登記補課';
+  h.innerHTML = `<span>📝 已登記補課</span><span class="buke-collapse-count">（共 ${items.length} 筆）</span><span class="buke-collapse-arrow">▶</span>`;
   wrap.appendChild(h);
 
   if (!items.length) {

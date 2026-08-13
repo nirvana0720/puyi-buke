@@ -127,15 +127,39 @@ function buildSection(title, cls, members, needCredit, leaderDbId, sb) {
   return wrap;
 }
 
-/** 班長視圖：依 group_id 分組，每組顯示小計標題 + 組內風險卡片 */
+/**
+ * 班長視圖：依 group_id 分組，每組顯示小計標題 + 組內風險卡片
+ * 2026-08-13 補記：班級人數一多（100+人）原本每組都全展開，頁面要滑到天荒地老。
+ * 改成：①頂部加一排可點的組別導覽 pill（含紅燈組標紅字＋人數，點下去直接跳到該組）；
+ * ②每組用 <details> 包起來，預設收合，只有組內有紅燈學員的組自動展開；③組內排序不變。
+ * 用 120 人／8 組假資料量測過：頁面總高度從約 10280px 降到約 4260px（減少近六成）。
+ * 搜尋框（filterBoardByName）搭配這裡新增的 dataset.defaultOpen，會在搜到人時自動展開
+ * 該組、清空搜尋則還原成原本（有紅燈才展開）的收合狀態。
+ */
 function buildGroupedRiskSection(active, needCredit, leaderDbId, sb) {
   const wrap = document.createElement('div');
 
   const groupIds = [...new Set(active.map(r => r.group_id || ''))].sort();
 
+  // ── 頂部導覽 pill 列：跳轉到任一組，紅燈組標紅字＋人數 ──
+  const nav = document.createElement('div');
+  nav.className = 'group-nav';
+  for (const gid of groupIds) {
+    const members = active.filter(r => (r.group_id || '') === gid);
+    const careCount = members.filter(r => r.red_light).length;
+    const anchor = `grp-${gid || '未分組'}`;
+    const a = document.createElement('a');
+    a.href = `#${anchor}`;
+    a.textContent = careCount ? `${gid || '未分組'} 🔴${careCount}` : (gid || '未分組');
+    if (careCount) a.classList.add('has-care');
+    nav.appendChild(a);
+  }
+  wrap.appendChild(nav);
+
   for (const gid of groupIds) {
     const members = active.filter(r => (r.group_id || '') === gid);
     const count   = members.length;
+    const careCount = members.filter(r => r.red_light).length;
 
     const avgAttend = count
       ? Math.round(members.reduce((s, r) => s + (r.held > 0 ? r.physical / r.held * 100 : 0), 0) / count)
@@ -144,13 +168,21 @@ function buildGroupedRiskSection(active, needCredit, leaderDbId, sb) {
       ? Math.round(members.reduce((s, r) => s + r.total_credit / needCredit * 100, 0) / count)
       : 0;
 
-    const groupTitle = document.createElement('div');
+    const details = document.createElement('details');
+    details.className = 'group-details';
+    details.id = `grp-${gid || '未分組'}`;
+    details.open = careCount > 0;
+    details.dataset.defaultOpen = careCount > 0 ? '1' : '0';
+
+    const groupTitle = document.createElement('summary');
     groupTitle.className = 'buke-section';
     groupTitle.innerHTML = `<span>${gid || '（未分組）'}</span>
       <span style="font-size:0.85em;font-weight:normal;margin-left:12px;color:var(--muted)">
         ${count} 人　出席率 ${avgAttend}%　預計結業率 ${avgCredit}%
-      </span>`;
-    wrap.appendChild(groupTitle);
+      </span>
+      ${careCount ? `<span class="buke-badge danger">🔴 ${careCount} 人需關懷</span>` : ''}
+      <span class="buke-collapse-arrow">▶</span>`;
+    details.appendChild(groupTitle);
 
     const sorted = [
       ...members.filter(r => r.red_light),
@@ -164,7 +196,8 @@ function buildGroupedRiskSection(active, needCredit, leaderDbId, sb) {
       const sectionCls = m.red_light ? 'care' : m.can_graduate ? 'pass' : 'warn';
       grid.appendChild(buildCard(m, sectionCls, needCredit, leaderDbId, sb));
     }
-    wrap.appendChild(grid);
+    details.appendChild(grid);
+    wrap.appendChild(details);
   }
 
   return wrap;
@@ -313,6 +346,15 @@ function filterBoardByName(query) {
     const header = grid.previousElementSibling;
     if (header && header.classList.contains('buke-section')) {
       header.style.display = showGroup ? '' : 'none';
+    }
+    // 2026-08-13 補記：已登記補課／依組別卡片牆這兩區現在包在可收合的 <details> 裡
+    // （見 render_lists.js buildRegisteredMakeupSection、render.js buildGroupedRiskSection）。
+    // 搜尋有命中時要自動展開該區塊，否則卡片雖然沒被 display:none，但因為外層 <details>
+    // 是收合的，畫面上還是看不到；清空搜尋則還原成各自建立時記下的預設收合狀態
+    // （dataset.defaultOpen：已登記補課永遠是 1，依組別卡片牆則是有紅燈學員才 1）。
+    const details = grid.closest('details');
+    if (details && details.dataset.defaultOpen !== undefined) {
+      details.open = q ? anyVisible : details.dataset.defaultOpen === '1';
     }
   });
 }

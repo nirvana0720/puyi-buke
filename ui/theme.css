@@ -175,6 +175,50 @@ body {
 }
 .buke-expand-btn:hover { background: var(--header); color: var(--header-tx); }
 
+/* ── 可收合區段標題（2026-08-13 新增：已登記補課／依組別卡片牆等）
+   用法：把整個區塊改成 <details>，標題放進 <summary class="buke-section">，
+   標題文字旁可加 .buke-collapse-count（共幾筆）與 .buke-collapse-arrow（▶，展開時轉90度）。
+   選到 `details > summary.buke-section` 就好，跟 details 本身掛什麼 class 無關，
+   已登記補課／依組別卡片牆兩處共用同一套規則。 ── */
+details > summary.buke-section {
+  cursor: pointer; list-style: none; user-select: none;
+}
+details > summary.buke-section::-webkit-details-marker { display: none; }
+details > summary.buke-section .buke-collapse-count {
+  font-weight: normal; font-size: 0.82em; color: var(--muted);
+}
+details > summary.buke-section .buke-collapse-arrow {
+  margin-left: auto; flex-shrink: 0; font-size: 0.85em; color: var(--muted);
+  transition: transform .15s;
+}
+details[open] > summary.buke-section .buke-collapse-arrow { transform: rotate(90deg); }
+
+/* 依組別卡片牆：每組標題變成可點的卡片式列（比純文字標題更清楚是能點的） */
+details.group-details { margin-bottom: 4px; }
+details.group-details > summary.buke-section {
+  padding: 10px 12px; margin: 12px 0 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  flex-wrap: wrap;
+}
+details.group-details > summary.buke-section .buke-badge { margin-left: 8px; }
+
+/* 依組別卡片牆頂部：跳轉導覽 pill 列，含紅燈組標紅並附人數，方便大班快速跳到需要關懷的組 */
+.group-nav {
+  position: sticky; top: 0; z-index: 5; background: var(--bg);
+  padding: 8px 0 10px; display: flex; gap: 6px; overflow-x: auto;
+  border-bottom: 1px solid var(--line); margin-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.group-nav a {
+  flex-shrink: 0; font-size: 0.82em; padding: 5px 12px; border-radius: var(--r-pill);
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+  text-decoration: none; white-space: nowrap;
+}
+.group-nav a.has-care {
+  border-color: var(--danger-bar); color: var(--danger-tx); font-weight: 500;
+  background: var(--danger-bg);
+}
+
 /* ── 分頁標籤（改用 CSS Grid 固定 2 欄，不用 flex-wrap：
    之前用 flex-wrap 讓標籤自然換行，手機上文字一多換行位置不固定，分隔線會斷在奇怪的地方、
    看起來像排版壞掉。改成固定 2 欄格線後，不管文字長短，格子永遠對齊，分隔線一定連續。） ── */
