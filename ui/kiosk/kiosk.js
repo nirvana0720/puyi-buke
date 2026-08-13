@@ -486,6 +486,11 @@ function todayStr() {
           suggestEl.innerHTML = '';
           msgEl.textContent = '✅ 已登記，清單已更新。可繼續輸入下一位學員。';
           msgEl.style.color = 'var(--ok-tx)';
+        },
+        // 2026-08-13 新增：查詢結果裡「已登記」的缺課旁邊編輯按鈕，接到既有 kioskEditMakeup
+        async (makeupId, sessionRef, earphone, plannedDate, plannedSlot, note) => {
+          await kioskEditMakeup(sb, staff.staff_id, makeupId, sessionRef, earphone, plannedDate, plannedSlot, note);
+          loadDay(datePicker.value); // 若改到今天，讓今日清單同步更新
         }
       );
     }

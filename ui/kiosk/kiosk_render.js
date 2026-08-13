@@ -438,9 +438,81 @@ function toggleEditMakeupForm(areaId, m, onEdit, lookupMember) {
   });
 }
 
+// ── 已登記缺課旁的行內編輯表單（義工用學員編號查詢，2026-08-13 新增）─────
+// 跟 toggleEditMakeupForm 的差別：這筆是哪一堂缺課已經固定（不用選堂次下拉），
+// 只改耳機／預約日期時段／備註，session_ref 直接沿用 a.session_ref 不變。
+// areaId：掛在每一筆缺課列下面的容器 id（mk-edit-abs-{idx}）
+// a：kiosk_lookup_member 回傳的單筆 absence（含 makeup_id/session_ref/planned_date/
+//     planned_slot/earphone/note）
+// onEdit(makeupId, sessionRef, earphone, plannedDate, plannedSlot, note)
+function toggleInlineMakeupEditForm(areaId, className, a, onEdit) {
+  const area = document.getElementById(areaId);
+  if (!area) return;
+  if (area.innerHTML) { area.innerHTML = ''; return; }
+
+  const hourOpts = Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join('');
+  const minOpts  = Array.from({length:12},(_,mi)=>`<option value="${String(mi*5).padStart(2,'0')}">${String(mi*5).padStart(2,'0')}</option>`).join('');
+  const [ph0, pm0] = (a.planned_slot || '').split(':');
+
+  area.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;margin:6px 0 4px;padding:10px;background:var(--bg);border-radius:var(--r-md)">
+    <div style="font-size:13px;color:var(--muted)">${className}　${a.date}</div>
+    <label style="font-size:14px;display:flex;align-items:center;gap:8px"><input type="checkbox" class="f-eear2"${a.earphone ? ' checked' : ''} style="width:18px;height:18px"> 借用耳機</label>
+    <div style="font-size:14px">預約補課日期
+      <input type="date" class="buke-input f-edate2" style="font-size:14px;margin-top:4px;width:100%" value="${a.planned_date || ''}">
+    </div>
+    <div style="font-size:14px">預約補課時間
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+        <select class="buke-select f-ehour2" style="font-size:14px;flex:1"><option value="">時</option>${hourOpts}</select>
+        <span style="color:var(--muted)">:</span>
+        <select class="buke-select f-emin2" style="font-size:14px;flex:1"><option value="">分</option>${minOpts}</select>
+      </div>
+    </div>
+    <label style="font-size:14px">備註
+      <input class="buke-input f-enote2" style="font-size:14px;margin-top:4px;width:100%" value="${a.note || ''}">
+    </label>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="buke-btn f-esave2" style="font-size:13px;padding:4px 14px;min-height:30px">儲存</button>
+      <button type="button" class="buke-btn buke-btn-ghost f-ecancel2" style="font-size:13px;padding:4px 14px;min-height:30px">取消</button>
+    </div>
+    <div class="f-emsg2" style="font-size:13px"></div>
+  </div>`;
+
+  const hourSel = area.querySelector('.f-ehour2');
+  const minSel  = area.querySelector('.f-emin2');
+  const msgEl   = area.querySelector('.f-emsg2');
+  if (ph0) hourSel.value = ph0;
+  if (pm0) minSel.value = pm0;
+
+  area.querySelector('.f-ecancel2').addEventListener('click', () => { area.innerHTML = ''; });
+
+  area.querySelector('.f-esave2').addEventListener('click', async () => {
+    const earphone    = area.querySelector('.f-eear2').checked;
+    const plannedDate = area.querySelector('.f-edate2').value || null;
+    const h = hourSel.value, mi = minSel.value;
+    const plannedSlot = (h && mi) ? `${h}:${mi}` : null;
+    const note = area.querySelector('.f-enote2').value.trim() || null;
+    if (plannedSlot && !plannedDate) {
+      msgEl.textContent = '⚠ 已填時段，請一併選擇日期';
+      msgEl.style.color = 'var(--danger-tx)';
+      return;
+    }
+    const btn = area.querySelector('.f-esave2');
+    btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
+    try {
+      await onEdit(a.makeup_id, a.session_ref, earphone, plannedDate, plannedSlot, note);
+    } catch (e) {
+      msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
+      btn.disabled = false;
+    }
+  });
+}
+
 // ── 現場補課登記表單（純禪修班影音，移除類型選擇） ─────────────────
 // classes = [{member_db_id, class_ref, class_name, absences:[{session_ref,date,week_num}]}]
-function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubmit, onReloadDay) {
+// onEdit(makeupId, sessionRef, earphone, plannedDate, plannedSlot, note)：
+// 2026-08-13 新增，讓已登記（disabled）那幾筆缺課旁邊多一顆「編輯」按鈕，
+// 不用等這筆補課剛好排在「今天」才能在今日清單改（緣由見 kiosk_lookup_member 註解）。
+function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubmit, onReloadDay, onEdit) {
   const el = document.getElementById(containerId);
   if (!el) return;
 
@@ -518,11 +590,11 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     if (w) { w.textContent = txt; w.style.display = txt ? 'block' : 'none'; }
   };
 
-  classSel.addEventListener('change', () => {
+  function renderSessions() {
     const cr = Number(classSel.value);
     const cls = classMap.get(cr);
     if (!cls) { sessWrap.innerHTML = '<span style="color:var(--muted);font-size:14px">請先選擇班別</span>'; return; }
-    sessWrap.innerHTML = (cls.absences || []).map(a => {
+    sessWrap.innerHTML = (cls.absences || []).map((a, idx) => {
       const wk = a.week_num ? ` 第${a.week_num}堂` : '';
       const disabled = !!a.already_registered;
       const hint = disabled
@@ -530,13 +602,37 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
             ? `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}，已到 ${a.attend_count} 次，尚未補完課）`
             : `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}）`)
         : '';
-      return `<label style="font-size:14px;display:flex;align-items:center;gap:6px;${disabled ? 'cursor:not-allowed;color:var(--muted)' : 'cursor:pointer'}">
-        <input type="checkbox" class="mk-sess-cb" value="${a.session_ref}"${disabled ? ' disabled' : ''}
-               data-label="${cls.class_name}${wk} ${a.date}" style="width:18px;height:18px">
-        ${cls.class_name}${wk} ${a.date}${hint}
-      </label>`;
+      // 已登記且有 makeup_id 才給編輯按鈕（舊資料 kiosk_lookup_member 若沒回 makeup_id，維持原本純顯示）
+      const editBtn = disabled && a.makeup_id && onEdit
+        ? `<button type="button" class="buke-btn" data-edit-abs="${idx}"
+                   style="font-size:12px;padding:3px 10px;min-height:auto;margin-left:6px;
+                          background:var(--makeup-tx);border-radius:var(--r-pill)">編輯</button>`
+        : '';
+      return `<div>
+        <label style="font-size:14px;display:flex;align-items:center;gap:6px;${disabled ? 'cursor:not-allowed;color:var(--muted)' : 'cursor:pointer'}">
+          <input type="checkbox" class="mk-sess-cb" value="${a.session_ref}"${disabled ? ' disabled' : ''}
+                 data-label="${cls.class_name}${wk} ${a.date}" style="width:18px;height:18px">
+          <span style="flex:1">${cls.class_name}${wk} ${a.date}${hint}</span>${editBtn}
+        </label>
+        <div id="mk-edit-abs-${idx}"></div>
+      </div>`;
     }).join('') || '<span style="color:var(--muted);font-size:14px">此班無缺課堂次</span>';
-  });
+
+    sessWrap.querySelectorAll('[data-edit-abs]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.editAbs);
+        const a = (cls.absences || [])[idx];
+        toggleInlineMakeupEditForm(`mk-edit-abs-${idx}`, cls.class_name, a, async (...args) => {
+          await onEdit(...args);
+          // 存檔成功後直接把畫面上的預約日期/時段更新掉，不用整頁重查
+          a.planned_date = args[3]; a.planned_slot = args[4]; a.earphone = args[2]; a.note = args[5];
+          renderSessions();
+        });
+      });
+    });
+  }
+
+  classSel.addEventListener('change', renderSessions);
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -879,5 +975,5 @@ function renderTodayLog(records) {
 }
 
 if (typeof window !== 'undefined') {
-  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm, kioskInlineConfirm };
+  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm, toggleInlineMakeupEditForm, kioskInlineConfirm };
 }

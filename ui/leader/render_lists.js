@@ -143,14 +143,95 @@ function buildRedLightList(active, mode) {
 }
 
 /**
- * ⏰ 即將逾期（已逾期排最前）
- * @param {Array}  items  { row, mk, daysLeft }[]
- * @param {string} mode   'leader' | 'class'
+ * 📝 已登記補課（未逾期，可改時間）— 2026-08-13 新增
+ * 緣由：原本學長看板完全沒地方能看到／編輯「已登記、但還沒進即將逾期名單」的補課，
+ * 得等剩 14 天內才會在「即將逾期」表現身，看到了也不能改——學長頁面代登記表單
+ * （renderProxyMakeupPicker）只吃「還沒登記過」的缺課，已登記的完全沒有編輯入口。
+ * 這裡列出所有未逾期的已登記補課，每筆都能開彈窗改時間；已逾期的不收在這裡
+ * （逾期只能師父後台改，維持跟義工端 kiosk_edit_makeup 一致的規則），逾期的
+ * 只會出現在下面「即將逾期」表，灰字提示、不給按鈕。
+ * @param {StudentRow[]} active
+ * @param {string} mode        'leader' | 'class'
+ * @param {number} leaderDbId
+ * @param {object} sb
  * @returns {HTMLElement}
  */
-function buildUrgentSection(items, mode) {
-  const showGroup = mode === 'class';
+function buildRegisteredMakeupSection(active, mode, leaderDbId, sb) {
+  const items = [];
+  for (const r of active) {
+    for (const mk of (r.makeups || [])) {
+      if (!mk.is_overdue) items.push({ row: r, mk });
+    }
+  }
+  items.sort((a, b) => (a.mk.planned_date || '').localeCompare(b.mk.planned_date || ''));
 
+  const wrap = document.createElement('div');
+  wrap.className = 'buke-section-block makeup';
+  const h = document.createElement('div');
+  h.className = 'buke-section';
+  h.textContent = '📝 已登記補課';
+  wrap.appendChild(h);
+
+  if (!items.length) {
+    const p = document.createElement('p');
+    p.className = 'buke-empty';
+    p.textContent = '目前沒有已登記、未逾期的補課。';
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  // 手機版排版考量：這裡有操作按鈕，改用卡片（義工端／學員端本來就是這個風格）而不是
+  // 表格——實測過表格加操作欄在窄螢幕會被壓到欄位文字一字一行直排，卡片式滿版按鈕才點得到。
+  // 包一層 .buke-grid：跟風險卡片牆用同一個 class，搜尋框（filterBoardByName）才抓得到。
+  const grid = document.createElement('div');
+  grid.className = 'buke-grid';
+
+  for (const { row, mk } of items) {
+    const card = document.createElement('div');
+    card.className = 'buke-card';
+    card.dataset.search = `${row.name || ''} ${row.dharma_name || ''}`.toLowerCase();
+    const groupTxt = mode === 'class' && row.group_id ? `　${row.group_id}` : '';
+
+    const top = document.createElement('div');
+    top.className = 'row';
+    top.style.marginBottom = '4px';
+    top.innerHTML = `<span class="name">${row.name}${groupTxt}</span><span class="buke-badge warn">⏳ 待補課</span>`;
+
+    const detail = document.createElement('div');
+    detail.className = 'detail';
+    detail.innerHTML = `缺課日期：${mk.session_date || ''}<br>預約補課時間：${mk.planned_date || '未填'} ${mk.planned_slot || ''}`;
+
+    const btn = document.createElement('button');
+    btn.className = 'buke-btn';
+    btn.style.cssText = 'margin-top:8px;width:100%;font-size:14px;padding:8px 0';
+    btn.textContent = '改預約時間';
+    btn.addEventListener('click', () => {
+      window.LeaderActions.renderEditMakeupTimeSheet(sb, mk, row.name, leaderDbId, () => {
+        detail.innerHTML = `缺課日期：${mk.session_date || ''}<br>預約補課時間：${mk.planned_date || '未填'} ${mk.planned_slot || ''}`;
+      });
+    });
+
+    card.appendChild(top);
+    card.appendChild(detail);
+    card.appendChild(btn);
+    grid.appendChild(card);
+  }
+
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+/**
+ * ⏰ 即將逾期（已逾期排最前）
+ * 2026-08-13：改用卡片＋操作欄——未逾期的可以直接改時間（跟上面「已登記補課」共用
+ * 同一個編輯彈窗），已逾期的維持灰字「請洽師父後台」，不給按鈕（逾期只能後台改）。
+ * @param {Array}  items      { row, mk, daysLeft }[]
+ * @param {string} mode       'leader' | 'class'
+ * @param {number} leaderDbId
+ * @param {object} sb
+ * @returns {HTMLElement}
+ */
+function buildUrgentSection(items, mode, leaderDbId, sb) {
   const wrap = document.createElement('div');
   wrap.className = 'buke-section-block warn';
   const h = document.createElement('div');
@@ -158,36 +239,52 @@ function buildUrgentSection(items, mode) {
   h.textContent = '⏰ 即將逾期（補課）';
   wrap.appendChild(h);
 
-  const table = document.createElement('table');
-  table.className = 'buke-table';
-  table.style.cssText = 'font-size:0.92em;margin-bottom:12px';
+  const grid = document.createElement('div');
+  grid.className = 'buke-grid';
 
-  const groupTh = showGroup ? '<th style="padding:6px 8px;text-align:left">組別</th>' : '';
-  table.innerHTML = `<thead><tr>
-    <th style="padding:6px 8px;text-align:left">姓名</th>
-    ${groupTh}
-    <th style="padding:6px 8px;text-align:left">缺課日期</th>
-    <th style="padding:6px 8px;text-align:left">截止日</th>
-    <th style="padding:6px 8px;text-align:left">狀態</th>
-  </tr></thead>`;
-
-  const tbody = document.createElement('tbody');
   for (const { row, mk, daysLeft } of items) {
-    const statusTxt = mk.is_overdue
-      ? '<span style="color:var(--danger)">已逾期</span>'
-      : `<span style="color:var(--warn)">剩 ${daysLeft} 天</span>`;
-    const groupTd = showGroup ? `<td style="padding:5px 8px">${row.group_id || ''}</td>` : '';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td style="padding:5px 8px">${row.name}</td>
-      ${groupTd}
-      <td style="padding:5px 8px">${mk.session_date || ''}</td>
-      <td style="padding:5px 8px">${mk.deadline_date || ''}</td>
-      <td style="padding:5px 8px">${statusTxt}</td>`;
-    tbody.appendChild(tr);
+    const card = document.createElement('div');
+    card.className = 'buke-card';
+    card.dataset.search = `${row.name || ''} ${row.dharma_name || ''}`.toLowerCase();
+    const groupTxt = mode === 'class' && row.group_id ? `　${row.group_id}` : '';
+    const badge = mk.is_overdue
+      ? '<span class="buke-badge danger">已逾期</span>'
+      : `<span class="buke-badge warn">剩 ${daysLeft} 天</span>`;
+
+    const top = document.createElement('div');
+    top.className = 'row';
+    top.style.marginBottom = '4px';
+    top.innerHTML = `<span class="name">${row.name}${groupTxt}</span>${badge}`;
+
+    const detail = document.createElement('div');
+    detail.className = 'detail';
+    detail.innerHTML = `缺課日期：${mk.session_date || ''}　截止日：${mk.deadline_date || ''}`;
+
+    card.appendChild(top);
+    card.appendChild(detail);
+
+    if (mk.is_overdue) {
+      const note = document.createElement('div');
+      note.style.cssText = 'margin-top:8px;font-size:12px;color:var(--muted);text-align:center;padding:6px 0';
+      note.textContent = '已逾期，請洽師父後台';
+      card.appendChild(note);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'buke-btn';
+      btn.style.cssText = 'margin-top:8px;width:100%;font-size:14px;padding:8px 0';
+      btn.textContent = '改預約時間';
+      btn.addEventListener('click', () => {
+        window.LeaderActions.renderEditMakeupTimeSheet(sb, mk, row.name, leaderDbId, () => {
+          detail.innerHTML = `缺課日期：${mk.session_date || ''}　截止日：${mk.deadline_date || ''}`;
+        });
+      });
+      card.appendChild(btn);
+    }
+
+    grid.appendChild(card);
   }
-  table.appendChild(tbody);
-  wrap.appendChild(table);
+
+  wrap.appendChild(grid);
   return wrap;
 }
 

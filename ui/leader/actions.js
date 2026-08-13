@@ -174,6 +174,94 @@ function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
 }
 
 /**
+ * 開啟「改預約補課時間」彈窗（bottom sheet），2026-08-13 新增。
+ * 用途：學長/班長改一筆「已登記、未逾期」補課的預約日期/時段/耳機/備註——
+ * 跟代登記（renderProxyMakeupPicker）不同，這支不能選堂次，堂次已經固定，
+ * 只是把既有登記的時間改掉，呼叫的是 leader_edit_makeup_time（非 register_makeup）。
+ * @param {object} sb          Supabase client
+ * @param {object} mk          該筆補課（含 makeup_id/planned_date/planned_slot/earphone/note）
+ * @param {string} studentName 顯示用學員姓名
+ * @param {number} leaderDbId  登入者（學長/班長）的 members.id
+ * @param {Function} onDone    成功後回呼（重新整理看板用）
+ */
+function renderEditMakeupTimeSheet(sb, mk, studentName, leaderDbId, onDone) {
+  const [ph0, pm0] = (mk.planned_slot || '').split(':');
+
+  const bodyHtml = `
+    <label style="display:block;margin-bottom:12px;font-size:16px">預定補課日期
+      <input type="date" name="planned_date" class="buke-input" style="display:block;width:100%;margin-top:4px" value="${mk.planned_date || ''}">
+    </label>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <label style="flex:1;font-size:16px">時
+        <input type="number" name="hour" min="0" max="23" class="buke-input" style="display:block;width:100%;margin-top:4px" value="${ph0 || ''}">
+      </label>
+      <label style="flex:1;font-size:16px">分
+        <input type="number" name="minute" min="0" max="59" class="buke-input" style="display:block;width:100%;margin-top:4px" value="${pm0 || '0'}">
+      </label>
+    </div>
+    <label style="display:block;margin-bottom:16px;font-size:16px">
+      <input type="checkbox" name="earphone"${mk.earphone ? ' checked' : ''}> 借用耳機
+    </label>
+    <label style="display:block;margin-bottom:16px;font-size:16px">備註
+      <input type="text" name="note" class="buke-input" style="display:block;width:100%;margin-top:4px" value="${mk.note || ''}">
+    </label>
+    <div class="proxy-msg" style="margin-bottom:10px;font-size:16px;color:var(--danger)"></div>
+    <div style="display:flex;gap:10px">
+      <button type="button" class="buke-btn proxy-submit">儲存</button>
+      <button type="button" class="buke-btn-ghost proxy-cancel">取消</button>
+    </div>
+  `;
+
+  const sheet = window.LeaderModal.openSheet({
+    title: '改預約補課時間',
+    subtitle: `學員：${studentName}　缺課日期：${mk.session_date || ''}`,
+    bodyHtml,
+    onMount(panelEl) {
+      const msgEl = panelEl.querySelector('.proxy-msg');
+      panelEl.querySelector('.proxy-cancel').addEventListener('click', () => sheet.close());
+
+      panelEl.querySelector('.proxy-submit').addEventListener('click', async () => {
+        const plannedDate = panelEl.querySelector('[name=planned_date]').value;
+        const hour        = String(panelEl.querySelector('[name=hour]').value || '0').padStart(2, '0');
+        const minute      = String(panelEl.querySelector('[name=minute]').value || '0').padStart(2, '0');
+        const earphone    = panelEl.querySelector('[name=earphone]').checked;
+        const note        = panelEl.querySelector('[name=note]').value.trim() || null;
+
+        if (!plannedDate) { msgEl.textContent = '請填入預定日期。'; return; }
+
+        const plannedSlot = `${hour}:${minute}`;
+        msgEl.style.color = 'var(--muted)';
+        msgEl.textContent = '送出中…';
+
+        try {
+          const { error } = await sb.rpc('leader_edit_makeup_time', {
+            p_acting_leader_db_id: leaderDbId,
+            p_makeup_id:           mk.makeup_id,
+            p_planned_date:        plannedDate,
+            p_planned_slot:        plannedSlot,
+            p_earphone:            earphone,
+            p_note:                note,
+          });
+          if (error) throw new Error(error.message);
+          // 直接改掉呼叫端傳進來的 mk（物件參照共用），卡片文字才能不用整頁重查就更新
+          mk.planned_date = plannedDate; mk.planned_slot = plannedSlot;
+          mk.earphone     = earphone;    mk.note         = note;
+          msgEl.style.color = 'var(--ok)';
+          msgEl.textContent = '✓ 已儲存';
+          onDone && onDone();
+          sheet.close();
+        } catch (e) {
+          msgEl.style.color = 'var(--danger)';
+          msgEl.textContent = `❌ ${e.message}`;
+        }
+      });
+    },
+  });
+
+  return sheet;
+}
+
+/**
  * 代取消補課
  */
 async function actingCancelMakeup(sessionRef, targetMemberDbId, leaderDbId, sb) {
@@ -295,6 +383,7 @@ if (typeof window !== 'undefined') {
   window.LeaderActions = {
     renderProxyMakeupForm,
     renderProxyMakeupPicker,
+    renderEditMakeupTimeSheet,
     actingCancelMakeup,
     renderProxyTransferForm,
   };
@@ -303,6 +392,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     renderProxyMakeupForm,
     renderProxyMakeupPicker,
+    renderEditMakeupTimeSheet,
     actingCancelMakeup,
     renderProxyTransferForm,
   };

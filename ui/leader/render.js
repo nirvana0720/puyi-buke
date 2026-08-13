@@ -74,8 +74,11 @@ function renderBoard(rows, mode, leaderDbId, sb) {
   // ── 紅燈名單（永遠顯示，render_lists.js）────────────────────
   container.appendChild(buildRedLightList(active, mode));
 
+  // ── 已登記補課（未逾期，可改時間，render_lists.js，2026-08-13 新增）───
+  container.appendChild(buildRegisteredMakeupSection(active, mode, leaderDbId, sb));
+
   // ── 即將逾期表（render_lists.js）────────────────────────────
-  if (urgentMakeups.length) container.appendChild(buildUrgentSection(urgentMakeups, mode));
+  if (urgentMakeups.length) container.appendChild(buildUrgentSection(urgentMakeups, mode, leaderDbId, sb));
 
   // ── 缺課未登記表（render_lists.js）──────────────────────────
   if (unregistered.length) container.appendChild(buildUnregisteredSection(unregistered, mode, leaderDbId, sb));
