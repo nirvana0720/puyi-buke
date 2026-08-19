@@ -96,6 +96,22 @@
     };
   }
 
+  /** 依日期重新排序整班堂次、重新編號「第幾堂」（week_num 只是顯示標籤，sessions 表對它
+   *  沒有 UNIQUE 限制，可以直接覆寫；新增/刪除/改日期互換之後都呼叫這支，確保「第幾堂」
+   *  永遠等於上課日期的先後順序，不管資料是怎麼異動的，不要各自寫一份重複邏輯） */
+  async function resyncWeekNums(sb, classRef) {
+    let list = await fetchSessions(sb, classRef);
+    list = list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    for (let idx = 0; idx < list.length; idx++) {
+      const wantedNum = idx + 1;
+      if (list[idx].week_num !== wantedNum) {
+        await updateSession(sb, list[idx].id, { week_num: wantedNum });
+        list[idx].week_num = wantedNum;
+      }
+    }
+    return list;
+  }
+
   /** 渲染堂次管理表格（inline 逐列儲存，改一堂不整面板重整；刪除/新增/整批順延則重抓整班堂次重繪表格）
    *  @param {object} cls 該班別完整物件（需含 id／class_name／total_sessions，供整批順延下拉與
    *         「新增一堂」後比對 total_sessions 用） */
@@ -171,13 +187,33 @@
           const date  = row.querySelector('.f-sdate').value;
           const held  = row.querySelector('.f-sheld').checked;
           if (!date) { msgEl.textContent = '請選擇日期'; msgEl.style.color = 'var(--danger-tx)'; return; }
+
+          const conflict = sessions.find(x => x.id !== s.id && x.date === date);
+          if (conflict) {
+            const warnHeld = (s.is_held || conflict.is_held)
+              ? '\n⚠️ 其中至少一堂已有出缺勤/補課資料，互換後這些紀錄會跟著各自的堂次變成新日期，請確認。'
+              : '';
+            const ok = confirm(
+              `這個日期已經是第 ${conflict.week_num} 堂了，要不要直接跟第 ${conflict.week_num} 堂互換日期？${warnHeld}`
+            );
+            if (!ok) { msgEl.textContent = '已取消，請換一個日期'; msgEl.style.color = 'var(--danger-tx)'; return; }
+          }
+
           btn.disabled = true; msgEl.textContent = '儲存中…'; msgEl.style.color = 'var(--muted)';
           try {
-            await updateSession(sb, s.id, { date, is_held: held });
-            msgEl.textContent = '✅ 已更新'; msgEl.style.color = 'var(--ok-tx)';
+            if (conflict) {
+              // 三段式互換，中間借一個保證沒人用的暫時日期，避開 UNIQUE(class_ref, date) 撞期
+              const TEMP_DATE = '9999-12-31';
+              await updateSession(sb, conflict.id, { date: TEMP_DATE });
+              await updateSession(sb, s.id, { date, is_held: held });
+              await updateSession(sb, conflict.id, { date: s.date });
+            } else {
+              await updateSession(sb, s.id, { date, is_held: held });
+            }
+            const updated = await resyncWeekNums(sb, classRef);
+            renderSessionsTable(sb, area, updated, cls);
           } catch (e) {
             msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
-          } finally {
             btn.disabled = false;
           }
         });
@@ -192,16 +228,7 @@
           btn.disabled = true; msgEl.textContent = '刪除中…'; msgEl.style.color = 'var(--muted)';
           try {
             await deleteSession(sb, s.id);
-            const updated = await fetchSessions(sb, classRef);
-            // 刪除後重新編號「第幾堂」，維持連續（1,2,3…），避免畫面上出現跳號造成誤會；
-            // week_num 只是顯示標籤，這裡重排不影響任何缺課/補課/結業的統計邏輯。
-            for (let idx = 0; idx < updated.length; idx++) {
-              const wantedNum = idx + 1;
-              if (updated[idx].week_num !== wantedNum) {
-                await updateSession(sb, updated[idx].id, { week_num: wantedNum });
-                updated[idx].week_num = wantedNum;
-              }
-            }
+            const updated = await resyncWeekNums(sb, classRef);
             renderSessionsTable(sb, area, updated, cls);
           } catch (e) {
             msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
@@ -256,19 +283,7 @@
       try {
         const nextWeekNum = sessions.length ? Math.max(...sessions.map(s => s.week_num)) + 1 : 1;
         await insertSession(sb, classRef, { date, week_num: nextWeekNum });
-        let updated = await fetchSessions(sb, classRef);
-
-        // 新增後依日期重新排序、重新編號「第幾堂」，避免新加的日期插在中間卻被排到最後一堂
-        // （week_num 只是顯示標籤，sessions 表對它沒有 UNIQUE 限制，直接依序覆寫即可；
-        //  邏輯比照「刪除後重新編號」那段，不影響任何缺課/補課/結業的統計邏輯）
-        updated = updated.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-        for (let idx = 0; idx < updated.length; idx++) {
-          const wantedNum = idx + 1;
-          if (updated[idx].week_num !== wantedNum) {
-            await updateSession(sb, updated[idx].id, { week_num: wantedNum });
-            updated[idx].week_num = wantedNum;
-          }
-        }
+        const updated = await resyncWeekNums(sb, classRef);
 
         if (updated.length > (cls.total_sessions || 0)) {
           const sync = confirm(
