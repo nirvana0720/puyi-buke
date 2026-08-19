@@ -256,7 +256,20 @@
       try {
         const nextWeekNum = sessions.length ? Math.max(...sessions.map(s => s.week_num)) + 1 : 1;
         await insertSession(sb, classRef, { date, week_num: nextWeekNum });
-        const updated = await fetchSessions(sb, classRef);
+        let updated = await fetchSessions(sb, classRef);
+
+        // 新增後依日期重新排序、重新編號「第幾堂」，避免新加的日期插在中間卻被排到最後一堂
+        // （week_num 只是顯示標籤，sessions 表對它沒有 UNIQUE 限制，直接依序覆寫即可；
+        //  邏輯比照「刪除後重新編號」那段，不影響任何缺課/補課/結業的統計邏輯）
+        updated = updated.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+        for (let idx = 0; idx < updated.length; idx++) {
+          const wantedNum = idx + 1;
+          if (updated[idx].week_num !== wantedNum) {
+            await updateSession(sb, updated[idx].id, { week_num: wantedNum });
+            updated[idx].week_num = wantedNum;
+          }
+        }
+
         if (updated.length > (cls.total_sessions || 0)) {
           const sync = confirm(
             `目前共幾堂設定是 ${cls.total_sessions}，新增後已有 ${updated.length} 筆堂次，`
