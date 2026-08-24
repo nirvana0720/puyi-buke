@@ -138,11 +138,12 @@
     _muOlderLoaded = true;
   }
 
-  /** 班別下拉選單／清空功能的資料來源：查 classes 表全部班名，不受「近 14 天」篩選影響 */
+  /** 班別下拉選單／清空功能的資料來源：查 classes 表全部班名，不受「近 14 天」篩選影響。
+   *  status 一併帶出，供 runWipeClass 判斷是否已「結業封存」。 */
   async function fetchClassOptions() {
-    const { data, error } = await _sb.from('classes').select('id,class_name').order('class_name');
+    const { data, error } = await _sb.from('classes').select('id,class_name,status').order('class_name');
     if (error) throw new Error(`班別清單：${error.message}`);
-    _classOptions = (data || []).map(c => ({ class_ref: c.id, class_name: c.class_name }));
+    _classOptions = (data || []).map(c => ({ class_ref: c.id, class_name: c.class_name, status: c.status }));
   }
 
   // ── RPC / 資料操作 ──────────────────────────────────────────
@@ -273,8 +274,15 @@
     okBtn.disabled = true;
     msgEl.textContent = '清空中…';
     try {
-      const classRef = _classOptions.find(c => c.class_name === className)?.class_ref;
+      const classOpt = _classOptions.find(c => c.class_name === className);
+      const classRef = classOpt?.class_ref;
       if (!classRef) throw new Error('找不到對應班別，請重新整理後再試');
+
+      if (classOpt.status !== '已結業') {
+        msgEl.textContent = '這個班還沒有結業封存，請先到「班別設定」按下「結業封存」，再回來清空補課/調課資料';
+        okBtn.disabled = false;
+        return;
+      }
 
       const { data: upcomingSess, error: upErr } = await _sb.from('sessions')
         .select('id').eq('class_ref', classRef).gte('date', TODAY).limit(1);
