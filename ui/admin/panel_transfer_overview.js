@@ -5,19 +5,18 @@
 
 (function () {
   let _sb, _transfers = [], _filterClass = '', _filterStatus = 'all', _searchName = '';
+  let _trOlderLoaded = false, _trOlderCount = 0, _trCutoff = null;
+
+  const TRANSFER_SELECT = 'id,to_date,status,attended_at,late_mark,registered_by,note,ctis_updated,' +
+    'members!member_ref(name,group_id,classes(class_name)),' +
+    'sessions!from_session_ref(date),' +
+    'classes!to_class_ref(class_name)';
+  const DONE_STATUSES = ['已出席', '未到'];
 
   // ── 資料讀取 ────────────────────────────────────────────────
 
-  async function fetchTransfers() {
-    const { data, error } = await _sb.from('transfers').select(
-      'id,to_date,status,attended_at,late_mark,registered_by,note,ctis_updated,' +
-      'members!member_ref(name,group_id,classes(class_name)),' +
-      'sessions!from_session_ref(date),' +
-      'classes!to_class_ref(class_name)'
-    ).order('created_at', { ascending: false });
-    if (error) throw new Error(`日夜補：${error.message}`);
-
-    _transfers = (data || []).map(r => ({
+  function _mapTransferRows(rows) {
+    return rows.map(r => ({
       ...r,
       _name:       r.members?.name                || '—',
       _group:      r.members?.group_id            || '',
@@ -26,6 +25,41 @@
       _from_date:  r.sessions?.date               || '',
       _to_class:   r.classes?.class_name          || '—',
     }));
+  }
+
+  /** 「已登記」永遠全撈；「已出席／未到」只預設抓近 14 天，更早的收進「顯示更早資料」 */
+  async function fetchTransfers() {
+    const cutoff = window.PanelMakeupOverview.recentCutoffISO();
+    _trCutoff = cutoff; // loadOlderTransfers 要用同一個切點，避免時間經過後兩段查詢對不上
+    const base = () => _sb.from('transfers').select(TRANSFER_SELECT);
+
+    const [{ data: pendingData, error: pendErr }, { data: doneData, error: doneErr }] = await Promise.all([
+      base().eq('status', '已登記').order('created_at', { ascending: false }),
+      base().in('status', DONE_STATUSES).gte('created_at', cutoff).order('created_at', { ascending: false }),
+    ]);
+    if (pendErr) throw new Error(`日夜補：${pendErr.message}`);
+    if (doneErr) throw new Error(`日夜補：${doneErr.message}`);
+
+    const { count, error: cntErr } = await _sb.from('transfers')
+      .select('id', { count: 'exact', head: true })
+      .in('status', DONE_STATUSES).lt('created_at', cutoff);
+    if (cntErr) throw new Error(`日夜補：${cntErr.message}`);
+    _trOlderCount  = count || 0;
+    _trOlderLoaded = false;
+
+    _transfers = _mapTransferRows([...(pendingData || []), ...(doneData || [])]);
+  }
+
+  /** 點「顯示更早資料」才撈：已出席／未到、created_at 早於 cutoff 的全部（分批 .range()） */
+  async function loadOlderTransfers() {
+    const cutoff = _trCutoff;
+    const older = await window.PanelMakeupOverview.fetchAllByRange((from, to) =>
+      _sb.from('transfers').select(TRANSFER_SELECT)
+        .in('status', DONE_STATUSES).lt('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .range(from, to));
+    _transfers = [..._transfers, ..._mapTransferRows(older)];
+    _trOlderLoaded = true;
   }
 
   // ── RPC / 資料操作 ──────────────────────────────────────────
@@ -70,7 +104,8 @@
       </div>
       <div id="to-add-form" style="margin-bottom:12px"></div>
       <div id="to-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
-      <div id="to-list"></div>`;
+      <div id="to-list"></div>
+      <div id="to-older-area" style="margin-bottom:12px"></div>`;
 
     container.querySelector('[data-tab="makeup"]').addEventListener('click', () => {
       container.innerHTML = '';
@@ -148,6 +183,8 @@
       listEl.innerHTML = '<p class="buke-empty">沒有符合的紀錄。</p>'; return;
     }
     window.PanelMakeupOverview.renderGroupedByClass(listEl, trFiltered, buildTransferCard, container);
+    window.PanelMakeupOverview.renderOlderButton(container, '#to-older-area', { loaded: _trOlderLoaded, count: _trOlderCount },
+      loadOlderTransfers, () => applyAndRender(container));
   }
 
   // ── 日夜補卡片 ────────────────────────────────────────────────
@@ -230,12 +267,17 @@
         if (error) throw new Error(error.message);
         await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
       }));
-    card.querySelector('.btn-del-tr').addEventListener('click', () =>
-      window.PanelMakeupOverview.inlineConfirm(card, `確定刪除 ${r._name} 這筆日夜補紀錄？`, async () => {
+    card.querySelector('.btn-del-tr').addEventListener('click', () => {
+      const msg = DONE_STATUSES.includes(r.status)
+        ? `這筆已標記「${r.status}」，直接刪除不會自動把原班出缺勤紀錄復原，可能留下對不起來的紀錄，
+           建議先按「重設為已登記」（若也需要復原出缺勤，請自行到學員總表核對修正）再刪除，確定還是要直接刪除嗎？`
+        : `確定刪除 ${r._name} 這筆日夜補紀錄？`;
+      window.PanelMakeupOverview.inlineConfirm(card, msg, async () => {
         const { error } = await deleteTransfer(r.id);
         if (error) throw new Error(error.message);
         await fetchTransfers(); applyAndRender(card.closest('#panel-body') || document.body);
-      }));
+      });
+    });
     card.querySelector('.btn-tr-reset')?.addEventListener('click', () =>
       window.PanelMakeupOverview.inlineConfirm(card,
         `確定將 ${r._name} 這筆日夜補重設為已登記？已重設，但原班出勤紀錄不會自動復原，如需要請自行到學員總表核對。`,

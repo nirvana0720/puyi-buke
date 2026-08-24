@@ -7,18 +7,71 @@
 (function () {
   let _sb, _makeups = [], _filterClass = '', _filterStatus = 'all', _searchName = '';
   const TODAY = new Date().toLocaleDateString('sv-SE');
+  const RECENT_DAYS = 14;
+  const RANGE_PAGE_SIZE = 1000;
+  let _muOlderLoaded = false, _muOlderCount = 0, _muCutoff = null;
+  let _classOptions = []; // [{ class_ref, class_name }]，供班別下拉選單／清空功能找 classRef 用；
+                           // 查 classes 表全部班名，不能只從 _makeups 取——_makeups 現在只保留
+                           // 「待補課」全部＋「已完成」近 14 天，只有舊資料的班會從 _makeups 消失，
+                           // 選單跟清空都會找不到那個班
+
+  const MAKEUP_SELECT = 'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,' +
+    'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
+    'sessions!session_ref(date)';
+
+  /** 「近 N 天」的起點（ISO），供 created_at 篩選用。匯出供其他兩個面板共用。 */
+  function recentCutoffISO() {
+    const d = new Date();
+    d.setDate(d.getDate() - RECENT_DAYS);
+    return d.toISOString();
+  }
+
+  /** 分批用 .range() 撈完一個查詢的所有資料，避免撞到 Supabase 單次 1000 筆上限
+   *  （比照 admin.js 的 fetchAllStudentStats 寫法）。buildQuery(from,to) 需回傳
+   *  已經加上 .range(from,to) 的 supabase query builder。匯出供其他兩個面板共用。 */
+  async function fetchAllByRange(buildQuery) {
+    const rows = [];
+    let from = 0;
+    for (;;) {
+      const { data, error } = await buildQuery(from, from + RANGE_PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+      const batch = data || [];
+      rows.push(...batch);
+      if (batch.length < RANGE_PAGE_SIZE) break;
+      from += RANGE_PAGE_SIZE;
+    }
+    return rows;
+  }
+
+  /** 「顯示更早資料 N 筆 ▾」按鈕：三個面板共用。state={loaded,count}；
+   *  onLoad() 負責撈更早的資料並把對應的 *OlderLoaded 設 true；完成後呼叫 onRerender()。 */
+  function renderOlderButton(container, areaSelector, state, onLoad, onRerender) {
+    const area = container.querySelector(areaSelector);
+    if (!area) return;
+    if (state.loaded || state.count <= 0) { area.innerHTML = ''; return; }
+    area.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.className = 'buke-expand-btn';
+    btn.textContent = `顯示更早資料 ${state.count} 筆 ▾`;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '載入中…';
+      try {
+        await onLoad();
+        onRerender();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = `❌ ${e.message}`;
+      }
+    });
+    area.appendChild(btn);
+  }
 
   // ── 資料讀取 ────────────────────────────────────────────────
 
-  async function fetchMakeups() {
-    const { data, error } = await _sb.from('makeups').select(
-      'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,' +
-      'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
-      'sessions!session_ref(date)'
-    ).order('created_at', { ascending: false });
-    if (error) throw new Error(`補課：${error.message}`);
-
-    const muIds = (data || []).map(r => r.id);
+  /** 補上到場紀錄＋衍生欄位，fetchMakeups／loadOlderMakeups 共用 */
+  async function _attachAttendance(rows) {
+    const muIds = rows.map(r => r.id);
     let attMap    = new Map(); // makeup_ref → 最新一筆（DESC 第一筆）
     let allAttMap = new Map(); // makeup_ref → 所有紀錄[]，由舊到新
     if (muIds.length) {
@@ -34,8 +87,7 @@
         allAttMap.set(a.makeup_ref, arr);
       });
     }
-
-    _makeups = (data || []).map(r => ({
+    return rows.map(r => ({
       ...r,
       _name:          r.members?.name                || '—',
       _group:         r.members?.group_id            || '',
@@ -48,6 +100,49 @@
       _attend_count:  (allAttMap.get(r.id) || []).length,
       _att_records:   allAttMap.get(r.id) || [],
     }));
+  }
+
+  /** 「待補課」永遠全撈；「已完成」只預設抓近 14 天，更早的收進「顯示更早資料」 */
+  async function fetchMakeups() {
+    const cutoff = recentCutoffISO();
+    _muCutoff = cutoff; // loadOlderMakeups 要用同一個切點，避免時間經過後兩段查詢對不上出現漏抓/重複
+    const base = () => _sb.from('makeups').select(MAKEUP_SELECT);
+
+    const [{ data: pendingData, error: pendErr }, { data: doneData, error: doneErr }] = await Promise.all([
+      base().eq('status', '待補課').order('created_at', { ascending: false }),
+      base().eq('status', '已完成').gte('created_at', cutoff).order('created_at', { ascending: false }),
+    ]);
+    if (pendErr) throw new Error(`補課：${pendErr.message}`);
+    if (doneErr) throw new Error(`補課：${doneErr.message}`);
+
+    const { count, error: cntErr } = await _sb.from('makeups')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', '已完成').lt('created_at', cutoff);
+    if (cntErr) throw new Error(`補課：${cntErr.message}`);
+    _muOlderCount  = count || 0;
+    _muOlderLoaded = false;
+
+    _makeups = await _attachAttendance([...(pendingData || []), ...(doneData || [])]);
+  }
+
+  /** 點「顯示更早資料」才撈：已完成、created_at 早於 cutoff 的全部（分批 .range()）；
+   *  沿用 fetchMakeups 當時算的切點，不要重新算，否則兩段查詢的邊界會對不上 */
+  async function loadOlderMakeups() {
+    const cutoff = _muCutoff;
+    const older = await fetchAllByRange((from, to) =>
+      _sb.from('makeups').select(MAKEUP_SELECT)
+        .eq('status', '已完成').lt('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .range(from, to));
+    _makeups = [..._makeups, ...await _attachAttendance(older)];
+    _muOlderLoaded = true;
+  }
+
+  /** 班別下拉選單／清空功能的資料來源：查 classes 表全部班名，不受「近 14 天」篩選影響 */
+  async function fetchClassOptions() {
+    const { data, error } = await _sb.from('classes').select('id,class_name').order('class_name');
+    if (error) throw new Error(`班別清單：${error.message}`);
+    _classOptions = (data || []).map(c => ({ class_ref: c.id, class_name: c.class_name }));
   }
 
   // ── RPC / 資料操作 ──────────────────────────────────────────
@@ -64,7 +159,7 @@
     _sb = sb;
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
-      await fetchMakeups();
+      await Promise.all([fetchMakeups(), fetchClassOptions()]);
       renderShell(container);
       applyAndRender(container);
     } catch (e) {
@@ -72,9 +167,15 @@
     }
   }
 
+  /** 依 _classOptions 重畫 #mo-class 選單，保留目前選中的班別 */
+  function _renderClassOptions(container) {
+    const sel = container.querySelector('#mo-class');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">全部班別</option>' +
+      _classOptions.map(c => `<option${c.class_name === _filterClass ? ' selected' : ''}>${c.class_name}</option>`).join('');
+  }
+
   function renderShell(container) {
-    const classNames = [...new Set(_makeups.map(r => r._class_name).filter(Boolean))].sort();
-    const classOpts  = classNames.map(n => `<option>${n}</option>`).join('');
     container.innerHTML = `
       <div class="buke-tabs tabs-3">
         <div class="buke-tab active" data-tab="makeup">補課登記</div>
@@ -83,7 +184,7 @@
       </div>
       <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
-        <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option>${classOpts}</select>
+        <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option></select>
         <button id="mo-wipe-class" class="buke-btn buke-btn-danger" style="font-size:14px;padding:6px 14px;min-height:36px;display:none"></button>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
@@ -94,7 +195,8 @@
       <div id="mo-wipe-area" style="margin-bottom:12px"></div>
       <div id="mo-urgent" style="margin-bottom:14px"></div>
       <div id="mo-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
-      <div id="mo-list"></div>`;
+      <div id="mo-list"></div>
+      <div id="mo-older-area" style="margin-bottom:12px"></div>`;
 
     container.querySelector('[data-tab="transfer"]').addEventListener('click', () => {
       container.innerHTML = '';
@@ -114,11 +216,14 @@
     container.querySelector('#mo-status').addEventListener('change', e => { _filterStatus = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-refresh').addEventListener('click', async () => {
       container.querySelector('#mo-list').innerHTML = '<p class="buke-empty">載入中…</p>';
-      await fetchMakeups(); applyAndRender(container);
+      await Promise.all([fetchMakeups(), fetchClassOptions()]);
+      _renderClassOptions(container);
+      applyAndRender(container);
     });
     container.querySelector('#mo-add-makeup').addEventListener('click', () => showAddMakeupForm(container));
     container.querySelector('#mo-print').addEventListener('click', () => window.print());
     container.querySelector('#mo-wipe-class').addEventListener('click', () => showWipeClassConfirm(container));
+    _renderClassOptions(container);
     _updateWipeBtn(container);
   }
 
@@ -168,8 +273,17 @@
     okBtn.disabled = true;
     msgEl.textContent = '清空中…';
     try {
-      const classRef = _makeups.find(r => r._class_name === className)?._class_ref;
+      const classRef = _classOptions.find(c => c.class_name === className)?.class_ref;
       if (!classRef) throw new Error('找不到對應班別，請重新整理後再試');
+
+      const { data: upcomingSess, error: upErr } = await _sb.from('sessions')
+        .select('id').eq('class_ref', classRef).gte('date', TODAY).limit(1);
+      if (upErr) throw new Error(upErr.message);
+      if (upcomingSess && upcomingSess.length) {
+        msgEl.textContent = '這個班還有尚未上完的堂次，無法清空';
+        okBtn.disabled = false;
+        return;
+      }
 
       const { data: sessRows, error: sessErr } = await _sb.from('sessions').select('id').eq('class_ref', classRef);
       if (sessErr) throw new Error(sessErr.message);
@@ -199,7 +313,7 @@
       }
 
       _filterClass = '';
-      await fetchMakeups();
+      await Promise.all([fetchMakeups(), fetchClassOptions()]);
       renderShell(container);
       applyAndRender(container);
       const countEl = container.querySelector('#mo-count');
@@ -293,6 +407,8 @@
       listEl.innerHTML = '<p class="buke-empty">沒有符合的紀錄。</p>'; return;
     }
     renderGroupedByClass(listEl, muFiltered, buildMakeupCard, container);
+    renderOlderButton(container, '#mo-older-area', { loaded: _muOlderLoaded, count: _muOlderCount },
+      loadOlderMakeups, () => applyAndRender(container));
   }
 
   /** 依班別分組摺疊（<details> 預設展開），組內維持既有卡片渲染方式不變。
@@ -412,11 +528,17 @@
       inlineConfirm(card, `確定取消 ${r._name} 的補課完成？attendance 將還原（ML→LL / M→O）`, async () => { await uncompleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); }));
     card.querySelector('.btn-del-mu').addEventListener('click', () => {
       const msg = r.status === '已完成'
-        ? `⚠️ ${r._name} 這筆補課已標記「完成」。直接刪除只會移除這筆登記，<b>不會</b>自動把
-           出勤紀錄改回請假/缺席（ML→LL／M→O），會留下對不起來的紀錄（過去發生過）。
-           建議先按「取消完成」讓出勤還原，再視情況刪除。確定還是要直接刪除嗎？`
+        ? `${r._name} 這筆補課已標記「完成」，會先自動取消完成、復原出缺勤，再刪除這筆登記，確定嗎？`
         : `確定刪除 ${r._name} 這筆補課登記？`;
-      inlineConfirm(card, msg, async () => { await deleteMakeup(r.id); await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body); });
+      inlineConfirm(card, msg, async () => {
+        if (r.status === '已完成') {
+          const { error: uErr } = await uncompleteMakeup(r.id);
+          if (uErr) throw new Error(uErr.message);
+        }
+        const { error: dErr } = await deleteMakeup(r.id);
+        if (dErr) throw new Error(dErr.message);
+        await fetchMakeups(); applyAndRender(card.closest('#panel-body') || document.body);
+      });
     });
     card.querySelector('.btn-edit-mu').addEventListener('click', () => toggleEditMakeup(card, r));
     card.querySelectorAll('.btn-del-att').forEach(btn => {
@@ -563,5 +685,8 @@
     });
   }
 
-  window.PanelMakeupOverview = { loadMakeupOverviewPanel, buildMakeupCard, _loadAbsencesInto, renderGroupedByClass, inlineConfirm };
+  window.PanelMakeupOverview = {
+    loadMakeupOverviewPanel, buildMakeupCard, _loadAbsencesInto, renderGroupedByClass, inlineConfirm,
+    recentCutoffISO, fetchAllByRange, renderOlderButton,
+  };
 })();

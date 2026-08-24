@@ -7,6 +7,11 @@
 (function () {
   let _sb;
   const TODAY = new Date().toLocaleDateString('sv-SE');
+  const LATE_SELECT = 'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,ctis_synced,is_late_exception,' +
+    'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
+    'sessions!session_ref(date)';
+  let _lateRows = [];
+  let _lateOlderLoaded = false, _lateOlderCount = 0, _lateCutoff = null;
 
   // ── 面板入口 ────────────────────────────────────────────────
 
@@ -25,7 +30,8 @@
       </div>
       <div id="ml-form" style="margin-bottom:12px"></div>
       <div id="ml-count" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
-      <div id="ml-list"></div>`;
+      <div id="ml-list"></div>
+      <div id="ml-older-area" style="margin-bottom:12px"></div>`;
 
     container.querySelector('[data-tab="makeup"]').addEventListener('click', () => {
       container.innerHTML = '';
@@ -141,20 +147,9 @@
 
   // ── 清單（is_late_exception = true） ──────────────────────────
 
-  async function refreshList(container) {
-    const listEl  = container.querySelector('#ml-list');
-    const countEl = container.querySelector('#ml-count');
-    if (!listEl) return;
-    listEl.innerHTML = '<p class="buke-empty">載入中…</p>';
-
-    const { data, error } = await _sb.from('makeups').select(
-      'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,ctis_synced,is_late_exception,' +
-      'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
-      'sessions!session_ref(date)'
-    ).eq('is_late_exception', true).order('created_at', { ascending: false });
-    if (error) { listEl.innerHTML = `<div class="buke-msg err">❌ ${error.message}</div>`; return; }
-
-    const rows = data || [];
+  /** 補上到場紀錄＋衍生欄位（跟 panel_makeup_overview.js 的 _attachAttendance 邏輯一樣，
+   *  這裡的 makeup_attendances 少選一個 id 欄位，維持原本寫法不變） */
+  async function _attachLateAttendance(rows) {
     const muIds = rows.map(r => r.id);
     let attMap = new Map(), allAttMap = new Map();
     if (muIds.length) {
@@ -169,8 +164,7 @@
         allAttMap.set(a.makeup_ref, arr);
       });
     }
-
-    const list = rows.map(r => ({
+    return rows.map(r => ({
       ...r,
       _name:         r.members?.name                || '—',
       _group:        r.members?.group_id            || '',
@@ -181,11 +175,66 @@
       _attend_count: (allAttMap.get(r.id) || []).length,
       _att_records:  allAttMap.get(r.id) || [],
     }));
+  }
 
-    if (countEl) countEl.textContent = `逾期補課登記 ${list.length} 筆`;
+  /** 「待補課」永遠全撈；「已完成」只預設抓近 14 天，更早的收進「顯示更早資料」 */
+  async function _fetchLateBase() {
+    const cutoff = window.PanelMakeupOverview.recentCutoffISO();
+    _lateCutoff = cutoff; // loadOlderLate 要用同一個切點，避免時間經過後兩段查詢對不上
+    const base = () => _sb.from('makeups').select(LATE_SELECT).eq('is_late_exception', true);
+
+    const [{ data: pendingData, error: pendErr }, { data: doneData, error: doneErr }] = await Promise.all([
+      base().eq('status', '待補課').order('created_at', { ascending: false }),
+      base().eq('status', '已完成').gte('created_at', cutoff).order('created_at', { ascending: false }),
+    ]);
+    if (pendErr) throw new Error(pendErr.message);
+    if (doneErr) throw new Error(doneErr.message);
+
+    const { count, error: cntErr } = await _sb.from('makeups')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_late_exception', true).eq('status', '已完成').lt('created_at', cutoff);
+    if (cntErr) throw new Error(cntErr.message);
+    _lateOlderCount  = count || 0;
+    _lateOlderLoaded = false;
+
+    _lateRows = await _attachLateAttendance([...(pendingData || []), ...(doneData || [])]);
+  }
+
+  /** 點「顯示更早資料」才撈：已完成、created_at 早於 cutoff 的全部（分批 .range()） */
+  async function loadOlderLate() {
+    const cutoff = _lateCutoff;
+    const older = await window.PanelMakeupOverview.fetchAllByRange((from, to) =>
+      _sb.from('makeups').select(LATE_SELECT).eq('is_late_exception', true)
+        .eq('status', '已完成').lt('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .range(from, to));
+    _lateRows = [..._lateRows, ...await _attachLateAttendance(older)];
+    _lateOlderLoaded = true;
+  }
+
+  function _renderLateList(container) {
+    const listEl  = container.querySelector('#ml-list');
+    const countEl = container.querySelector('#ml-count');
+    if (!listEl) return;
+    if (countEl) countEl.textContent = `逾期補課登記 ${_lateRows.length} 筆`;
     listEl.innerHTML = '';
-    if (!list.length) { listEl.innerHTML = '<p class="buke-empty">目前沒有逾期補課登記紀錄。</p>'; return; }
-    list.forEach(r => listEl.appendChild(buildLateCard(r, container)));
+    if (!_lateRows.length) { listEl.innerHTML = '<p class="buke-empty">目前沒有逾期補課登記紀錄。</p>'; }
+    else { _lateRows.forEach(r => listEl.appendChild(buildLateCard(r, container))); }
+    window.PanelMakeupOverview.renderOlderButton(container, '#ml-older-area',
+      { loaded: _lateOlderLoaded, count: _lateOlderCount }, loadOlderLate, () => _renderLateList(container));
+  }
+
+  async function refreshList(container) {
+    const listEl = container.querySelector('#ml-list');
+    if (!listEl) return;
+    listEl.innerHTML = '<p class="buke-empty">載入中…</p>';
+    try {
+      await _fetchLateBase();
+    } catch (e) {
+      listEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+      return;
+    }
+    _renderLateList(container);
   }
 
   /** 複用 buildMakeupCard 的樣式與操作按鈕，額外加一個「已補登CTIS」勾選欄 */
