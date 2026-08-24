@@ -187,6 +187,7 @@
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option></select>
         <button id="mo-wipe-class" class="buke-btn buke-btn-danger" style="font-size:14px;padding:6px 14px;min-height:36px;display:none"></button>
+        <span id="mo-wipe-hint" style="font-size:13px;color:var(--muted);display:none"></span>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="mo-add-makeup" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登補課</button>
@@ -219,6 +220,7 @@
       container.querySelector('#mo-list').innerHTML = '<p class="buke-empty">載入中…</p>';
       await Promise.all([fetchMakeups(), fetchClassOptions()]);
       _renderClassOptions(container);
+      _updateWipeBtn(container);
       applyAndRender(container);
     });
     container.querySelector('#mo-add-makeup').addEventListener('click', () => showAddMakeupForm(container));
@@ -228,15 +230,27 @@
     _updateWipeBtn(container);
   }
 
-  /** 「清空此班補課/調課資料」按鈕：只在選到特定班別時顯示 */
+  /** 「清空此班補課/調課資料」按鈕：只在選到特定班別時顯示；未結業封存的班顯示但按不下去，
+   *  只是畫面上的防呆提示，實際安全檢查仍在 runWipeClass 那兩層（已結業／無未上完堂次） */
   function _updateWipeBtn(container) {
     const btn = container.querySelector('#mo-wipe-class');
+    const hint = container.querySelector('#mo-wipe-hint');
     if (!btn) return;
-    if (_filterClass) {
-      btn.style.display = '';
-      btn.textContent = `🗑️ 清空「${_filterClass}」補課/調課資料`;
-    } else {
+    if (!_filterClass) {
       btn.style.display = 'none';
+      if (hint) hint.style.display = 'none';
+      return;
+    }
+    btn.style.display = '';
+    btn.textContent = `🗑️ 清空「${_filterClass}」補課/調課資料`;
+    const classOpt = _classOptions.find(c => c.class_name === _filterClass);
+    const notFinished = classOpt?.status !== '已結業';
+    btn.disabled = notFinished;
+    if (hint) {
+      hint.style.display = notFinished ? '' : 'none';
+      hint.textContent = notFinished
+        ? '（這個班還沒有結業封存，暫時無法清空；要清空請先到「班別設定」按下「結業封存」）'
+        : '';
     }
   }
 
