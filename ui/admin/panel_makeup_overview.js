@@ -187,7 +187,7 @@
         <input id="mo-search" class="buke-input" placeholder="搜尋姓名" style="font-size:14px;min-height:36px;flex:1;min-width:120px">
         <select id="mo-class" class="buke-select" style="font-size:14px;min-height:36px"><option value="">全部班別</option></select>
         <button id="mo-wipe-class" class="buke-btn buke-btn-danger" style="font-size:14px;padding:6px 14px;min-height:36px;display:none"></button>
-        <span id="mo-wipe-hint" style="font-size:13px;color:var(--muted);display:none"></span>
+        <span id="mo-wipe-hint" style="font-size:13px;color:var(--muted);display:none;flex-basis:100%"></span>
         <select id="mo-status" class="buke-select" style="font-size:14px;min-height:36px"><option value="all">全部狀態</option><option value="pending">待補課</option><option value="done">已完成</option><option value="overdue">逾期</option></select>
         <button id="mo-refresh" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">🔄 重新整理</button>
         <button id="mo-add-makeup" class="buke-btn buke-btn-ghost" style="font-size:14px;padding:6px 14px;min-height:36px">＋ 補登補課</button>
