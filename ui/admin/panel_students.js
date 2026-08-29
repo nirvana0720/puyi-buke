@@ -203,6 +203,7 @@
     D: '日補', N: '夜補', E: '早退', W: '公假', X: '中輟', S1: '特殊1', S2: '特殊2', S3: '特殊3',
   };
   const MARK_OPTIONS = ['V', 'L', 'LL', 'A', 'O', 'M', 'ML', 'D', 'N', 'E', 'W', 'X', 'S1', 'S2', 'S3'];
+  const SOURCE_LABEL = { manual: '人工登打', api: '刷卡同步' };
 
   /** 幫每一列出缺勤掛上「編輯」互動：改標記、遇到對應補課登記時詢問是否一併刪除 */
   function wireAttendanceEdit(body, v, memberDbId) {
@@ -293,7 +294,7 @@
           <td style="padding:6px 10px">${a.date}</td>
           <td style="padding:6px 10px;text-align:center">${a.week_num ?? '—'}</td>
           <td class="cell-mark" style="padding:6px 10px" data-mark="${a.mark || ''}">${MARK_LABEL[a.mark] || a.mark || '—'}</td>
-          <td style="padding:6px 10px;color:var(--muted);font-size:13px">${a.source || ''}</td>
+          <td style="padding:6px 10px;color:var(--muted);font-size:13px">${SOURCE_LABEL[a.source] || a.source || ''}</td>
           <td class="cell-actions" style="padding:6px 10px">
             <button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>
           </td>

@@ -276,7 +276,7 @@
 
     function paintStudent(v) {
       renderProgressBar(v.memberInfo, v.stats);
-      renderStats(v.stats);
+      renderStats(v.stats, { memberId: cls.member_db_id, name: v.memberInfo.name, sb });
       renderAbsences(v.absences, v.makeups, rules,
         async (sessionRef, formData) => {
           await submitMakeupViaRpc(sb, cls.member_db_id, formData);

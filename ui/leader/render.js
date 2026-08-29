@@ -15,6 +15,8 @@ const LEADER_ATTENDANCE_MARK_LABEL = {
   V: '出席', L: '遲到', M: '補課', ML: '靜坐補課', D: '日補', N: '夜補',
 };
 
+const SOURCE_LABEL = { manual: '人工登打', api: '刷卡同步' };
+
 /**
  * 開啟「某學員出缺勤明細」唯讀彈窗（學長/班長看板點卡片姓名觸發）
  * 資料來源與後台「學員總表」openStudentDetail 相同的 get_student_view，但這裡只顯示、
@@ -56,7 +58,7 @@ function renderLeaderStudentDetail(v) {
         <td style="padding:6px 10px">${a.date}</td>
         <td style="padding:6px 10px;text-align:center">${a.week_num ?? '—'}</td>
         <td style="padding:6px 10px">${LEADER_ATTENDANCE_MARK_LABEL[a.mark] || a.mark || '—'}</td>
-        <td style="padding:6px 10px;color:var(--muted);font-size:13px">${a.source || ''}</td>
+        <td style="padding:6px 10px;color:var(--muted);font-size:13px">${SOURCE_LABEL[a.source] || a.source || ''}</td>
       </tr>`).join('')
     : `<tr><td colspan="4" style="padding:10px;color:var(--muted)">尚無出缺勤紀錄</td></tr>`;
 

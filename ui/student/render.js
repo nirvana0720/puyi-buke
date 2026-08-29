@@ -61,22 +61,40 @@ function renderProgressBar(memberInfo, stats) {
 
 // ── 2. 出缺勤三數字 ───────────────────────────────────────────
 
-function renderStats(stats) {
+/**
+ * @param {object} stats
+ * @param {{ memberId:number, name:string, sb:object }} [opts] 有傳且 openLeaderStudentDetail
+ *   （ui/leader/render.js 的全域函式）存在時，整塊變成可點擊，開啟出缺勤明細彈窗
+ *   （ui/leader/modal.js openSheet + get_student_view，跟學長/班長看板共用同一支）。
+ *   不傳（或該函式不存在，例如 ui/student/index.html 備用頁沒載入 leader/render.js）
+ *   則維持原本不可點擊的樣子，不掛任何事件、不顯示提示文字。
+ */
+function renderStats(stats, opts) {
   const el = document.getElementById('section-stats');
   if (!el) return;
+  const clickable = !!(opts && opts.memberId != null && typeof openLeaderStudentDetail === 'function');
   el.innerHTML = `
-    <div style="display:flex;gap:10px;margin-bottom:18px">
-      ${[
-        { label:'出席', val:stats.phys,   color:'var(--ok-tx)' },
-        { label:'缺課', val:stats.absent, color:'var(--danger-tx)' },
-        { label:'補課', val:stats.makeup, color:'var(--warn-tx)' },
-      ].map(({ label, val, color }) => `
-        <div style="flex:1;text-align:center;background:var(--surface);border:1px solid var(--line);
-                    border-radius:var(--r);padding:10px 4px">
-          <div style="font-size:24px;font-weight:700;color:${color}">${val}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:2px">${label}</div>
-        </div>`).join('')}
+    <div class="stats-wrap" style="margin-bottom:18px;${clickable ? 'cursor:pointer' : ''}">
+      <div style="display:flex;gap:10px">
+        ${[
+          { label:'出席', val:stats.phys,   color:'var(--ok-tx)' },
+          { label:'缺課', val:stats.absent, color:'var(--danger-tx)' },
+          { label:'補課', val:stats.makeup, color:'var(--warn-tx)' },
+        ].map(({ label, val, color }) => `
+          <div style="flex:1;text-align:center;background:var(--surface);border:1px solid var(--line);
+                      border-radius:var(--r);padding:10px 4px">
+            <div style="font-size:24px;font-weight:700;color:${color}">${val}</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:2px">${label}</div>
+          </div>`).join('')}
+      </div>
+      ${clickable ? `<div style="font-size:13px;color:var(--muted);text-align:right;margin-top:6px">查看每堂出缺勤明細 →</div>` : ''}
     </div>`;
+
+  if (clickable) {
+    el.querySelector('.stats-wrap').addEventListener('click', () => {
+      openLeaderStudentDetail(opts.memberId, opts.name, opts.sb);
+    });
+  }
 }
 
 // ── 3. 缺堂清單（就地展開表單 + 取消登記） ──────────────────
