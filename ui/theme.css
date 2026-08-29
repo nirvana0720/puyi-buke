@@ -113,6 +113,11 @@ body {
 .buke-card.pass { border-color: var(--ok-line); }
 .buke-card .row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
 .buke-card .name { font-size:18px; font-weight:500; color:var(--ink); }
+.buke-card .card-name-btn {
+  background:none; border:none; padding:0; font:inherit;
+  font-size:18px; font-weight:500; color:var(--ink); cursor:pointer;
+  text-decoration:underline; text-underline-offset:2px;
+}
 .buke-card .meta { font-size:14px; color:var(--muted); margin-left:6px; }
 .buke-card .detail { font-size:14px; color:#5F5E5A; margin-top:6px; }
 

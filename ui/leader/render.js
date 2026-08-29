@@ -8,6 +8,106 @@ const LEADER_MARK_LABEL = {
   E: '早退', W: '公假', X: '中輟', S1: '特殊1', S2: '特殊2', S3: '特殊3',
 };
 
+// 出缺勤明細彈窗（唯讀）專用完整標記對照表，涵蓋出席/補課類標記
+// （LEADER_MARK_LABEL 只收錄缺課類標記，供紅燈/未登記名單使用，這裡不動它，另外併一份完整版）
+const LEADER_ATTENDANCE_MARK_LABEL = {
+  ...LEADER_MARK_LABEL,
+  V: '出席', L: '遲到', M: '補課', ML: '靜坐補課', D: '日補', N: '夜補',
+};
+
+/**
+ * 開啟「某學員出缺勤明細」唯讀彈窗（學長/班長看板點卡片姓名觸發）
+ * 資料來源與後台「學員總表」openStudentDetail 相同的 get_student_view，但這裡只顯示、
+ * 不提供編輯出缺勤標記的按鈕（那是 admin_edit_attendance_mark，後台專屬操作）。
+ * @param {number} memberId 學員 members.id
+ * @param {string} name     學員姓名（顯示於標題）
+ * @param {object} sb       Supabase client
+ */
+function openLeaderStudentDetail(memberId, name, sb) {
+  const { panelEl } = window.LeaderModal.openSheet({
+    title: `${name} 的出缺勤明細`,
+    bodyHtml: '<p class="buke-empty">載入中…</p>',
+    onMount: async panel => {
+      const body = panel.querySelector('.sheet-body');
+      try {
+        const { data, error } = await sb.rpc('get_student_view', { p_member_db_id: memberId });
+        if (error) throw new Error(error.message);
+        if (!data) { body.innerHTML = '<p class="buke-empty">查無資料。</p>'; return; }
+        body.innerHTML = renderLeaderStudentDetail(data);
+      } catch (e) {
+        body.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+      }
+    },
+  });
+  return panelEl;
+}
+
+/**
+ * 出缺勤明細彈窗內容（唯讀）：每堂出缺勤 + 補課紀錄兩個表格
+ * 排版對照 ui/admin/panel_students.js 的 renderStudentDetail()，但拿掉「操作」欄與編輯按鈕。
+ */
+function renderLeaderStudentDetail(v) {
+  const attendance = v.attendance || [];
+  const makeups     = v.makeups     || [];
+
+  const attRows = attendance.length
+    ? attendance.map(a => `
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:6px 10px">${a.date}</td>
+        <td style="padding:6px 10px;text-align:center">${a.week_num ?? '—'}</td>
+        <td style="padding:6px 10px">${LEADER_ATTENDANCE_MARK_LABEL[a.mark] || a.mark || '—'}</td>
+        <td style="padding:6px 10px;color:var(--muted);font-size:13px">${a.source || ''}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="4" style="padding:10px;color:var(--muted)">尚無出缺勤紀錄</td></tr>`;
+
+  const makeupRows = makeups.length
+    ? makeups.map(mk => `
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:6px 10px">${mk.session_date}</td>
+        <td style="padding:6px 10px">${mk.method || '—'}</td>
+        <td style="padding:6px 10px">
+          <span class="buke-badge ${mk.status === '已完成' ? 'pass' : 'warn'}">${mk.status}</span>
+        </td>
+        <td style="padding:6px 10px">${mk.planned_date || '—'}</td>
+        <td style="padding:6px 10px">${mk.completed_date || '—'}</td>
+        <td style="padding:6px 10px;color:var(--muted);font-size:13px">${mk.deadline_date || '—'}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="6" style="padding:10px;color:var(--muted)">尚無補課紀錄</td></tr>`;
+
+  return `
+    <div class="buke-section" style="margin-bottom:8px">每堂出缺勤</div>
+    <div style="overflow-x:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--line);color:var(--muted);font-size:13px">
+            <th style="text-align:left;padding:6px 10px">日期</th>
+            <th style="text-align:center;padding:6px 10px">第幾堂</th>
+            <th style="text-align:left;padding:6px 10px">標記</th>
+            <th style="text-align:left;padding:6px 10px">來源</th>
+          </tr>
+        </thead>
+        <tbody>${attRows}</tbody>
+      </table>
+    </div>
+
+    <div class="buke-section" style="margin-bottom:8px">補課紀錄</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+          <tr style="border-bottom:2px solid var(--line);color:var(--muted);font-size:13px">
+            <th style="text-align:left;padding:6px 10px">缺課日期</th>
+            <th style="text-align:left;padding:6px 10px">方式</th>
+            <th style="text-align:left;padding:6px 10px">狀態</th>
+            <th style="text-align:left;padding:6px 10px">預約補課日</th>
+            <th style="text-align:left;padding:6px 10px">完成日期</th>
+            <th style="text-align:left;padding:6px 10px">補課期限</th>
+          </tr>
+        </thead>
+        <tbody>${makeupRows}</tbody>
+      </table>
+    </div>`;
+}
+
 /**
  * 在 #board 容器內渲染整班看板
  * @param {StudentRow[]} rows
@@ -107,7 +207,7 @@ function renderBoard(rows, mode, leaderDbId, sb) {
     if (pass.length) container.appendChild(buildSection('✅ 穩定達標',         'pass', pass, needCredit, leaderDbId, sb));
   }
 
-  if (closed.length) container.appendChild(buildClosedSection(closed));
+  if (closed.length) container.appendChild(buildClosedSection(closed, sb));
 }
 
 /** 建立一個風險區段（標題＋卡片網格） */
@@ -234,10 +334,12 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
   const tfrBtnId       = `card-tfr-${m.id}`;
   const tfrFormId      = `card-tfr-form-${m.id}`;
 
+  const nameBtnId = `card-name-${m.id}`;
+
   card.innerHTML = `
     <div class="row">
       <div>
-        <span class="name">${m.name}</span>
+        <button type="button" id="${nameBtnId}" class="card-name-btn" data-member-id="${m.id}" data-name="${m.name}">${m.name}</button>
         <span class="meta">${m.dharma_name || ''}　${m.group_id || ''}${m.group_num ? '-' + m.group_num : ''}</span>
       </div>
       <span class="buke-badge ${badgeCls}">${badgeText}</span>
@@ -255,6 +357,9 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
   `;
 
   setTimeout(() => {
+    const nameBtn = document.getElementById(nameBtnId);
+    nameBtn?.addEventListener('click', () => openLeaderStudentDetail(m.id, m.name, sb));
+
     const btn     = hasUnreg ? document.getElementById(proxyBtnId) : null;
     const form    = hasUnreg ? document.getElementById(proxyFormId) : null;
     const tfrBtn  = document.getElementById(tfrBtnId);
@@ -289,8 +394,8 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
   return card;
 }
 
-/** 建立「已休學」唯讀區段 */
-function buildClosedSection(members) {
+/** 建立「已休學」唯讀區段（唯讀是指不能編輯報名/補課資料，姓名仍可點開出缺勤明細） */
+function buildClosedSection(members, sb) {
   const wrap = document.createElement('div');
 
   const h = document.createElement('div');
@@ -307,16 +412,21 @@ function buildClosedSection(members) {
     card.className = 'buke-card';
     card.style.opacity = '0.6';
     card.dataset.search = `${m.name || ''} ${m.dharma_name || ''}`.toLowerCase();
+    const nameBtnId = `card-name-closed-${m.id}`;
     card.innerHTML = `
       <div class="row">
         <div>
-          <span class="name">${m.name}</span>
+          <button type="button" id="${nameBtnId}" class="card-name-btn" data-member-id="${m.id}" data-name="${m.name}">${m.name}</button>
           <span class="meta">${m.dharma_name || ''}　${m.group_id || ''}${m.group_num ? '-' + m.group_num : ''}</span>
         </div>
         <span class="buke-badge" style="background:var(--line);color:var(--muted)">休學</span>
       </div>
     `;
     grid.appendChild(card);
+
+    setTimeout(() => {
+      document.getElementById(nameBtnId)?.addEventListener('click', () => openLeaderStudentDetail(m.id, m.name, sb));
+    }, 0);
   }
 
   wrap.appendChild(grid);
