@@ -1739,10 +1739,16 @@ BEGIN
 END;
 $$;
 
--- ── 7.6c 堂次彈性調整：整批順延（docs/堂次彈性調整_規格.md，2026-08-10 新增）───
--- 逐筆用 FOR LOOP 依 week_num 遠→近方向更新，避免撞到 UNIQUE(class_ref,date)
+-- ── 7.6c 堂次彈性調整：整批順延智慧回填版（docs/堂次彈性調整_規格.md，2026-08-10 新增，
+-- 2026-09-02 改版）───
+-- 原版只用「是否已有出缺勤/補課資料」保護，會把純 F 放香假資料也當成「有資料」擋住
+-- 整批順延。新版：每一堂算出順延前/後日期；有真實資料（非純F、或有補課登記）的堂次，
+-- 把資料搬去「順延後日期＝這堂原本日期」的目的堂次，讓資料永遠對應到真正發生的日曆日；
+-- 找不到可歸位堂次、兩堂搶同一目的堂、或目的堂自己卡著不會被搬走的真實資料，就整批中止
+-- 不動任何資料。p_dry_run（預設 false）可只試算不套用。搬日期改成逐堂依序更新（依順延
+-- 方向決定順序），避免整批 UPDATE 時逐列套用 UNIQUE(class_ref,date) 暫時撞期。
 CREATE OR REPLACE FUNCTION admin_postpone_sessions(
-  p_class_ref bigint, p_from_week int, p_days int
+  p_class_ref bigint, p_from_week int, p_days int, p_dry_run boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1750,36 +1756,155 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_count int := 0;
-  v_row   RECORD;
+  v_updated     int := 0;
+  v_relocated   int := 0;
+  v_dup         RECORD;
+  v_unresolved  jsonb;
+  v_dupe_target jsonb;
+  v_collision   jsonb;
+  v_blocked     jsonb := '[]'::jsonb;
+  v_reloc_json  jsonb;
+  v_row         RECORD;
 BEGIN
   IF p_days = 0 THEN
-    RETURN jsonb_build_object('updated', 0);
+    RETURN jsonb_build_object('updated', 0, 'relocated', 0, 'dry_run', p_dry_run);
   END IF;
 
-  IF p_days > 0 THEN
-    FOR v_row IN
-      SELECT id FROM sessions
-      WHERE class_ref = p_class_ref AND week_num >= p_from_week
-      ORDER BY week_num DESC
-    LOOP
-      UPDATE sessions SET date = date + p_days WHERE id = v_row.id;
-      v_count := v_count + 1;
-    END LOOP;
-  ELSE
-    FOR v_row IN
-      SELECT id FROM sessions
-      WHERE class_ref = p_class_ref AND week_num >= p_from_week
-      ORDER BY week_num ASC
-    LOOP
-      UPDATE sessions SET date = date + p_days WHERE id = v_row.id;
-      v_count := v_count + 1;
-    END LOOP;
+  DROP TABLE IF EXISTS _postpone_plan;
+  CREATE TEMP TABLE _postpone_plan ON COMMIT DROP AS
+  SELECT
+    s.id,
+    s.week_num,
+    s.date AS old_date,
+    CASE WHEN s.week_num >= p_from_week THEN s.date + p_days ELSE s.date END AS new_date,
+    (
+      EXISTS(SELECT 1 FROM attendance a WHERE a.session_ref = s.id AND COALESCE(a.mark, '') <> 'F')
+      OR EXISTS(SELECT 1 FROM makeups mk WHERE mk.session_ref = s.id)
+    ) AS has_real_data
+  FROM sessions s
+  WHERE s.class_ref = p_class_ref;
+
+  -- 檢查①：順延後會不會有兩堂日期重複（不分是否有真實資料，一律不允許撞期）
+  SELECT new_date, array_agg(week_num ORDER BY week_num) AS weeks
+  INTO v_dup
+  FROM _postpone_plan
+  GROUP BY new_date
+  HAVING count(*) > 1
+  LIMIT 1;
+
+  IF v_dup.new_date IS NOT NULL THEN
+    IF p_dry_run THEN
+      RETURN jsonb_build_object('dry_run', true, 'ok', false,
+        'error', format('順延後第 %s 堂會撞期（都會變成 %s）', v_dup.weeks, v_dup.new_date));
+    END IF;
+    RAISE EXCEPTION '順延後第 % 堂會撞期（都會變成 %），已中止，沒有任何堂次被搬動。請改用「單堂改期」處理。', v_dup.weeks, v_dup.new_date;
   END IF;
 
-  RETURN jsonb_build_object('updated', v_count);
+  -- 規劃：每一堂「有真實資料」的堂次，找出「順延後日期＝這堂原本日期」的
+  -- 目的堂次（可能在範圍內也可能在範圍外）。
+  DROP TABLE IF EXISTS _reloc_plan;
+  CREATE TEMP TABLE _reloc_plan ON COMMIT DROP AS
+  SELECT
+    s.id AS source_id, s.week_num AS source_week, s.old_date,
+    t.id AS target_id, t.week_num AS target_week
+  FROM _postpone_plan s
+  LEFT JOIN _postpone_plan t ON t.new_date = s.old_date AND t.id <> s.id
+  WHERE s.has_real_data AND s.old_date <> s.new_date;
+
+  -- 檢查②：找不到可以歸位的目的堂次
+  SELECT jsonb_agg(jsonb_build_object(
+    'from_week', source_week, 'true_date', old_date, 'reason', '順延後找不到對應堂次可以歸位'
+  ))
+  INTO v_unresolved
+  FROM _reloc_plan WHERE target_id IS NULL;
+
+  -- 檢查③：兩堂真實資料同時想歸位到同一堂
+  SELECT jsonb_agg(jsonb_build_object(
+    'target_week', target_week, 'from_weeks', weeks, 'reason', '有兩堂真實資料同時要歸位到同一堂，無法自動判斷'
+  ))
+  INTO v_dupe_target
+  FROM (
+    SELECT target_id, target_week, array_agg(source_week ORDER BY source_week) AS weeks
+    FROM _reloc_plan WHERE target_id IS NOT NULL
+    GROUP BY target_id, target_week HAVING count(*) > 1
+  ) x;
+
+  -- 檢查④：目的堂次自己也卡著真實資料，而且那筆資料不會被搬走
+  SELECT jsonb_agg(jsonb_build_object(
+    'from_week', r.source_week, 'target_week', r.target_week,
+    'reason', '目的堂次已經有另一筆真實資料，而且那筆資料不會被搬走，無法自動歸位'
+  ))
+  INTO v_collision
+  FROM _reloc_plan r
+  JOIN _postpone_plan t ON t.id = r.target_id
+  WHERE r.target_id IS NOT NULL
+    AND t.has_real_data
+    AND NOT EXISTS (SELECT 1 FROM _reloc_plan r2 WHERE r2.source_id = r.target_id);
+
+  v_blocked := COALESCE(v_unresolved, '[]'::jsonb) || COALESCE(v_dupe_target, '[]'::jsonb) || COALESCE(v_collision, '[]'::jsonb);
+
+  IF jsonb_array_length(v_blocked) > 0 THEN
+    IF p_dry_run THEN
+      RETURN jsonb_build_object('dry_run', true, 'ok', false, 'blocked', v_blocked);
+    END IF;
+    RAISE EXCEPTION '有真實資料無法自動歸位（% 筆狀況），已中止，沒有任何堂次被搬動，詳見 blocked：%', jsonb_array_length(v_blocked), v_blocked;
+  END IF;
+
+  SELECT jsonb_agg(jsonb_build_object(
+    'from_week', source_week, 'to_week', target_week, 'true_date', old_date
+  ) ORDER BY source_week)
+  INTO v_reloc_json
+  FROM _reloc_plan WHERE target_id IS NOT NULL;
+  v_reloc_json := COALESCE(v_reloc_json, '[]'::jsonb);
+
+  IF p_dry_run THEN
+    RETURN jsonb_build_object(
+      'dry_run', true, 'ok', true,
+      'would_update', (SELECT count(*) FROM _postpone_plan WHERE old_date <> new_date),
+      'would_relocate', jsonb_array_length(v_reloc_json),
+      'relocation_plan', v_reloc_json,
+      'date_plan', (SELECT jsonb_agg(jsonb_build_object('week_num', week_num, 'old_date', old_date, 'new_date', new_date) ORDER BY week_num) FROM _postpone_plan WHERE old_date <> new_date)
+    );
+  END IF;
+
+  -- 全部驗證過關，正式套用：先把每一堂真實資料搬去正確的堂次，再搬日期
+  -- （先搬資料再搬日期，避免中途任何一步失敗時，資料曾經一度掛在錯的日期上）。
+  FOR v_row IN SELECT * FROM _reloc_plan WHERE target_id IS NOT NULL
+  LOOP
+    INSERT INTO attendance (member_ref, session_ref, mark, source, checkin_time)
+    SELECT member_ref, v_row.target_id, mark, source, checkin_time
+    FROM attendance WHERE session_ref = v_row.source_id AND COALESCE(mark, '') <> 'F'
+    ON CONFLICT (member_ref, session_ref) DO UPDATE SET
+      mark = EXCLUDED.mark, source = EXCLUDED.source, checkin_time = EXCLUDED.checkin_time;
+
+    DELETE FROM attendance WHERE session_ref = v_row.source_id AND COALESCE(mark, '') <> 'F';
+
+    UPDATE makeups SET session_ref = v_row.target_id WHERE session_ref = v_row.source_id;
+
+    v_relocated := v_relocated + 1;
+  END LOOP;
+
+  -- 逐堂更新日期，而不是一次整批 UPDATE：如果整批一次改，Postgres 逐列套用
+  -- 唯一鍵檢查時，可能會先暫時撞到「班上另一堂還沒輪到被更新、原本就占著」
+  -- 的舊日期（即使全部堂次改完之後彼此並不會重複）。依照順延方向決定更新
+  -- 順序（往後順延就由後往前、往前提前就由前往後），任何時間點都不會撞期。
+  FOR v_row IN
+    SELECT id, new_date FROM _postpone_plan
+    WHERE old_date <> new_date
+    ORDER BY week_num * (CASE WHEN p_days > 0 THEN -1 ELSE 1 END)
+  LOOP
+    UPDATE sessions SET date = v_row.new_date WHERE id = v_row.id;
+    v_updated := v_updated + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object('updated', v_updated, 'relocated', v_relocated, 'dry_run', false);
 END;
 $$;
+
+-- 舊簽章 (bigint,int,int) 在 Postgres 眼中跟新的 (bigint,int,int,boolean) 是兩支不同函式
+-- （多載），CREATE OR REPLACE 不會自動取代掉舊的——一定要明確 DROP 掉舊簽章，否則前端
+-- 傳3個參數呼叫時，可能還是叫到沒修好的舊版本。
+DROP FUNCTION IF EXISTS admin_postpone_sessions(bigint, int, int);
 
 -- ── 7.7 補課完成／取消完成／後台補登 ───────────────────────
 CREATE OR REPLACE FUNCTION complete_makeup(
@@ -4185,7 +4310,7 @@ REVOKE EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)    
 REVOKE EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION admin_get_sync_status()                                                          FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int)                                        FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int, boolean)                               FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION admin_student_stats(bigint)                                                     TO authenticated;
 GRANT  EXECUTE ON FUNCTION complete_makeup(bigint, date)                                                    TO authenticated;
 GRANT  EXECUTE ON FUNCTION uncomplete_makeup(bigint)                                                        TO authenticated;
@@ -4200,7 +4325,7 @@ GRANT  EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)    
 GRANT  EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_get_sync_status()                                                          TO authenticated;
-GRANT  EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int)                                        TO authenticated;
+GRANT  EXECUTE ON FUNCTION admin_postpone_sessions(bigint, int, int, boolean)                               TO authenticated;
 
 -- 8.6 義工帳號
 REVOKE EXECUTE ON FUNCTION create_staff(text, text, text, text) FROM PUBLIC;
