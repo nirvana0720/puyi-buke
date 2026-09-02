@@ -125,11 +125,12 @@
     }
     totalSessions += sessions.length;
 
-    // 5c. 名冊現況（判斷已休學，避免舊生缺漏被誤判成異常）
+    // 5c. 名冊現況（判斷已休學，避免舊生缺漏被誤判成異常；姓名則是給「官方那邊
+    // 完全查無此人」時當備援顯示用——這種情況官方沒有回傳姓名，只能用我方名冊的）
     var rosterMap = new Map();
     var roster = snapshot.roster || [];
     for (var ri = 0; ri < roster.length; ri++) {
-      rosterMap.set(roster[ri].member_id, roster[ri].status || '');
+      rosterMap.set(roster[ri].member_id, { status: roster[ri].status || '', name: roster[ri].name || '' });
     }
 
     // 5d. 依序（不平行）逐堂呼叫官方 API 並比對
@@ -182,7 +183,8 @@
         var off = officialMap.get(memberId);
         var our = ourMap.get(memberId);
 
-        var memberStatus = rosterMap.get(memberId) || '';
+        var rosterInfo = rosterMap.get(memberId) || {};
+        var memberStatus = rosterInfo.status || '';
         var isLeft = memberStatus === '休學';
 
         if (off && !our) {
@@ -211,7 +213,7 @@
 
         if (!off && our) {
           allDiffRows.push({
-            class_name: targetClass.class_name, date: sess.date, member_id: memberId, name: '', status: memberStatus,
+            class_name: targetClass.class_name, date: sess.date, member_id: memberId, name: rosterInfo.name || '', status: memberStatus,
             official_mark: '', our_mark: our.mark, source: our.source,
             type: isLeft ? '官方無此人（已休學，略過）' : '官方無此人'
           });
@@ -244,8 +246,13 @@
 
   if (!allDiffRows.length) return;   // 完全吻合就不用產生一份空白 CSV
 
+  // 2026-09-02：已休學舊生的差異不是真的異常（官方系統本來就會把沒來上課的人刪掉），
+  // alert 摘要仍然會算給您看，但不再放進匯出的 CSV 裡，避免每次稽核都要重新略過同一批人。
+  var exportRows = allDiffRows.filter(function (r) { return r.type.indexOf('已休學，略過') === -1; });
+  if (!exportRows.length) return;   // 扣掉已休學舊生之後沒有其他差異，就不用產生CSV
+
   var header = ['班別', '日期', '學員編號', '姓名', '目前狀態', '官方標記', '我方標記', '我方來源', '差異類型'];
-  var lines = allDiffRows.map(function (r) {
+  var lines = exportRows.map(function (r) {
     return [r.class_name, r.date, r.member_id, r.name, r.status, r.official_mark, r.our_mark, r.source, r.type]
       .map(function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; })
       .join(',');

@@ -1778,7 +1778,14 @@ BEGIN
     s.date AS old_date,
     CASE WHEN s.week_num >= p_from_week THEN s.date + p_days ELSE s.date END AS new_date,
     (
-      EXISTS(SELECT 1 FROM attendance a WHERE a.session_ref = s.id AND COALESCE(a.mark, '') <> 'F')
+      -- 人工輸入的：不管日期，一律算真實資料
+      EXISTS(SELECT 1 FROM attendance a WHERE a.session_ref = s.id AND a.source = 'manual' AND COALESCE(a.mark, '') <> 'F')
+      -- 刷卡系統同步的：只有「這一堂原本日期已經是過去式」才算真實資料——
+      -- 今天/未來的日期，就算目前看起來有O之類的標記，也可能只是同步機制
+      -- 在真正上課前預先寫入的暫時值（ingest_kiosk_attendance 找不到明確
+      -- 代碼時會自動預設成'O'），不是最終確認的結果，不需要特別保護。
+      OR (s.date < CURRENT_DATE AND EXISTS(SELECT 1 FROM attendance a WHERE a.session_ref = s.id AND a.source <> 'manual' AND COALESCE(a.mark, '') <> 'F'))
+      -- 補課登記：人為的排課決定，不管日期一律算真實資料
       OR EXISTS(SELECT 1 FROM makeups mk WHERE mk.session_ref = s.id)
     ) AS has_real_data
   FROM sessions s
