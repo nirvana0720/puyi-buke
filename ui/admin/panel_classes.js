@@ -254,15 +254,24 @@
         const affected = sessions.filter(s => s.week_num >= fromWeek);
         const hasHeld  = affected.some(s => s.is_held);
         const confirmMsg = hasHeld
-          ? `這幾堂已有出缺勤/報到資料，順延日期後日期會跟著改，請確認：從第 ${fromWeek} 堂起共 ${affected.length} 堂，順延 ${days} 天，確定要套用嗎？`
+          ? `這幾堂裡有些已經有真實出缺勤/報到資料——這些已經有資料的堂次這次「不會」被搬動，只有還沒有資料的堂次會順延日期：從第 ${fromWeek} 堂起共 ${affected.length} 堂，順延 ${days} 天，確定要套用嗎？`
           : `確定要從第 ${fromWeek} 堂起共 ${affected.length} 堂，整批順延 ${days} 天嗎？`;
         if (!confirm(confirmMsg)) return;
 
         btn.disabled = true; msgEl.textContent = '套用中…'; msgEl.style.color = 'var(--muted)';
         try {
-          await postponeSessions(sb, classRef, fromWeek, days);
+          const { updated: updatedCount, skipped } = await postponeSessions(sb, classRef, fromWeek, days);
           const updated = await fetchSessions(sb, classRef);
           renderSessionsTable(sb, area, updated, cls);
+          const donePostponeEl = area.querySelector('.postpone-form');
+          const doneMsgEl = area.querySelector('.postpone-msg');
+          if (donePostponeEl) donePostponeEl.style.display = '';
+          if (doneMsgEl) {
+            doneMsgEl.textContent = skipped
+              ? `✅ 已順延 ${updatedCount} 堂；${skipped} 堂已有資料，保護跳過未搬動`
+              : `✅ 已順延 ${updatedCount} 堂`;
+            doneMsgEl.style.color = 'var(--muted)';
+          }
         } catch (e) {
           msgEl.textContent = `❌ ${e.message}`; msgEl.style.color = 'var(--danger-tx)';
           btn.disabled = false;
