@@ -612,13 +612,18 @@ BEGIN
             AND a.mark IS NOT NULL
         ),
         'makeups', (
+          -- 2026-08-13 補記：加 makeup_id/earphone/note——學長看板要讓學長能改「已登記但
+          -- 未逾期」的補課時間（呼叫 leader_edit_makeup_time），沒有 makeup_id 前端叫不到那支。
           SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'makeup_id',     mk.id,
             'session_ref',   mk.session_ref,
             'session_date',  s.date,
             'status',        mk.status,
             'deadline_date', mk.deadline_date,
             'planned_date',  mk.planned_date,
             'planned_slot',  mk.planned_slot,
+            'earphone',      mk.earphone,
+            'note',          mk.note,
             'attend_count',  (SELECT count(*) FROM makeup_attendances ma WHERE ma.makeup_ref = mk.id),
             'is_overdue',    (mk.deadline_date < current_date)
           ) ORDER BY s.date), '[]'::jsonb)
@@ -1201,6 +1206,66 @@ BEGIN
   WHERE member_ref = p_member_db_id
     AND session_ref = p_session_ref
     AND status = '待補課';
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+-- ============================================================
+-- leader_edit_makeup_time（2026-08-13 新增）
+-- 學長/班長修改「已登記」補課的預約時間（日期/時段/耳機/備註）。
+-- 緣由：原本代登記表單（renderProxyMakeupPicker）只吃 unregistered_absences，
+-- 只要學員已經有補課登記（不管是自己登記還是先前誰代登記的），學長頁面完全沒有
+-- 編輯入口。這支只改「已登記、未逾期」的既有登記，不碰 session_ref（要改補哪一堂
+-- 缺課，維持走取消再重新登記，不在這支處理）。
+-- 逾期一律不放行——跟 admin_register_late_makeup 的分工一致：逾期只能師父後台改，
+-- 這支刻意不做「不擋已逾期」那段，維持跟 kiosk_edit_makeup 一樣的期限檢查。
+-- 2026-09-02 全面稽查時發現這支函式漏收進整套建置腳本，補上，讓新精舍安裝時
+-- 也會有這個功能。
+-- ============================================================
+CREATE OR REPLACE FUNCTION leader_edit_makeup_time(
+  p_acting_leader_db_id bigint,
+  p_makeup_id            bigint,
+  p_planned_date         date DEFAULT NULL,
+  p_planned_slot         text DEFAULT NULL,
+  p_earphone             bool DEFAULT NULL,
+  p_note                 text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_makeup RECORD;
+BEGIN
+  SELECT id, member_ref, status, deadline_date INTO v_makeup
+  FROM makeups WHERE id = p_makeup_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '查無此補課登記';
+  END IF;
+
+  -- 代理範圍檢查：只能改自己負責班級（班長）／班級＋組別（學長）的學員，
+  -- 跟 register_makeup 代登記共用同一支 _verify_leader_scope。
+  PERFORM _verify_leader_scope(p_acting_leader_db_id, v_makeup.member_ref);
+
+  IF v_makeup.status = '已完成' THEN
+    RAISE EXCEPTION '此筆補課已完成，無法編輯';
+  END IF;
+
+  IF v_makeup.deadline_date IS NOT NULL AND current_date > v_makeup.deadline_date THEN
+    RAISE EXCEPTION '補課期限（%）已過，請洽師父後台處理', v_makeup.deadline_date;
+  END IF;
+
+  PERFORM _check_makeup_slot_allowed(p_planned_date, p_planned_slot);
+
+  UPDATE makeups SET
+    planned_date = p_planned_date,
+    planned_slot = p_planned_slot,
+    earphone     = COALESCE(p_earphone, earphone),
+    note         = COALESCE(p_note, note),
+    updated_at   = now()
+  WHERE id = p_makeup_id;
 
   RETURN jsonb_build_object('ok', true);
 END;
@@ -3060,8 +3125,11 @@ BEGIN
                 'week_num',           s.week_num,
                 'deadline_date',      dl.deadline_date,
                 'already_registered', (mk.status = '待補課'),
+                'makeup_id',          mk.id,
                 'planned_date',       mk.planned_date,
                 'planned_slot',       mk.planned_slot,
+                'earphone',           mk.earphone,
+                'note',               mk.note,
                 'attend_count',       (SELECT count(*) FROM makeup_attendances ma WHERE ma.makeup_ref = mk.id)
               ) ORDER BY s.date
             ), '[]'::jsonb)
@@ -3781,10 +3849,14 @@ BEGIN
         jsonb_build_object(
           'makeup_id',    mk.id,
           'member_name',  m.name,
+          'member_id',    m.member_id,
           'class_name',   c.class_name,
+          'session_ref',  mk.session_ref,
           'session_date', s.date,
           'planned_date', mk.planned_date,
           'planned_slot', mk.planned_slot,
+          'earphone',     mk.earphone,
+          'note',         mk.note,
           'type',         '補課'
         ) ORDER BY mk.planned_date, mk.planned_slot, m.name
       ), '[]'::jsonb)
@@ -4083,9 +4155,12 @@ REVOKE EXECUTE ON FUNCTION _verify_leader_scope(bigint, bigint)                 
 REVOKE EXECUTE ON FUNCTION _check_makeup_slot_allowed(date, text)                                   FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION register_makeup(bigint, bigint, text, text, bool, date, text, bigint)     FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION cancel_makeup(bigint, bigint, bigint)                                    FROM PUBLIC;
+-- leader_edit_makeup_time：2026-08-13 新增，學長/班長改「已登記、未逾期」補課的預約時間
+REVOKE EXECUTE ON FUNCTION leader_edit_makeup_time(bigint, bigint, date, text, bool, text)          FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION _check_makeup_slot_allowed(date, text)                                   TO anon, authenticated;
 GRANT  EXECUTE ON FUNCTION register_makeup(bigint, bigint, text, text, bool, date, text, bigint)     TO anon;
 GRANT  EXECUTE ON FUNCTION cancel_makeup(bigint, bigint, bigint)                                    TO anon;
+GRANT  EXECUTE ON FUNCTION leader_edit_makeup_time(bigint, bigint, date, text, bool, text)           TO anon;
 
 -- 8.4b 日夜補（調班）
 REVOKE EXECUTE ON FUNCTION get_transfer_view(bigint)                              FROM PUBLIC;

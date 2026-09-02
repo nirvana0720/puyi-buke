@@ -1,1 +1,1 @@
-後台班別設定「整批順延」畫面文字更新，配合資料庫admin_postpone_sessions修正後的新行為：確認訊息講清楚已有真實出缺勤資料的堂次這次不會被搬動；套用成功後顯示實際順延幾堂、幾堂因已有資料被保護跳過
+db/full_setup_all_in_one.sql（給其他精舍安裝用的整套建置腳本）補上8/13新增卻漏收的功能：leader_edit_makeup_time（學長改補課預約時間）連同 GRANT，以及 kiosk_get_upcoming_registrations／kiosk_lookup_member／_members_with_marks 三支漏收的 makeup_id/earphone/note 等欄位。不影響普宜自己，但會影響照這份腳本新安裝的其他精舍——先前這幾項功能新精舍裝出來會缺，這次補齊。
