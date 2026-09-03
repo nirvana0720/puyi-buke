@@ -2566,8 +2566,11 @@ AS $$
     'class_id',   c.class_id,
     'class_name', c.class_name,
     'roster', (
+      -- 2026-09-02 補上 name：原本只有 member_id/status，導致「官方無此人」這類差異
+      -- 在稽核 CSV 裡姓名欄位沒有資料來源可以填，只能留空
       SELECT COALESCE(jsonb_agg(jsonb_build_object(
         'member_id', m.member_id,
+        'name',      m.name,
         'status',    m.status
       )), '[]'::jsonb)
       FROM members m

@@ -1,1 +1,1 @@
-db/full_setup_all_in_one.sql（給其他精舍安裝用的整套建置腳本）補上8/13新增卻漏收的功能：leader_edit_makeup_time（學長改補課預約時間）連同 GRANT，以及 kiosk_get_upcoming_registrations／kiosk_lookup_member／_members_with_marks 三支漏收的 makeup_id/earphone/note 等欄位。不影響普宜自己，但會影響照這份腳本新安裝的其他精舍——先前這幾項功能新精舍裝出來會缺，這次補齊。
+db/full_setup_all_in_one.sql：get_class_audit_snapshot 的 roster 補上 name 欄位（原本只有 member_id/status）。稽核比對書籤在官方系統查不到某人時（差異類型「官方無此人」），姓名欄位原本因為資料庫端沒回傳姓名，只能留空；這次補上後書籤才顯示得出姓名。JS 端（grabber/audit_bookmarklet.js）已在前次提交同步修改，這次是把資料庫這邊補齊，讓新精舍照這份腳本安裝時也是完整版本。
