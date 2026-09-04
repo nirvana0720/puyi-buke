@@ -2450,6 +2450,22 @@ BEGIN
     period_num  = EXCLUDED.period_num
   RETURNING id INTO v_class_ref;
 
+  -- 防呆（2026-09-04）：zenclass 這次完全沒回傳任何學員資料、也沒有明確標記取消，
+  -- 且這天本來就沒有堂次記錄時，不要無中生有新增一筆——避免颱風假／精舍臨時決定
+  -- 不上課但 zenclass 沒被同步更新時，自動同步誤建出空堂、且抓不到 week_num
+  -- 變成「第 null 堂」。已存在的堂次（例如良師父手動加的）不受影響，一樣正常更新。
+  SELECT id INTO v_session_ref FROM sessions WHERE class_ref = v_class_ref AND date = p_date;
+
+  IF v_session_ref IS NULL
+     AND jsonb_array_length(COALESCE(p_records, '[]'::jsonb)) = 0
+     AND NOT COALESCE((p_class->>'is_cancelled')::bool, false) THEN
+    RETURN jsonb_build_object(
+      'ok', true, 'class_ref', v_class_ref, 'session_ref', null,
+      'synced', 0, 'skipped', true,
+      'reason', '這天沒有任何學員資料、也沒有明確取消標記，且原本沒有堂次記錄，跳過新增，避免誤建空堂'
+    );
+  END IF;
+
   INSERT INTO sessions (class_ref, date, is_held, week_num)
   VALUES (
     v_class_ref,
