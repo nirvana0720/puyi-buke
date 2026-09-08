@@ -2264,6 +2264,115 @@ BEGIN
 END;
 $$;
 
+-- 2026-09-08：學員出缺勤補登缺堂記錄（重構52）——admin_edit_attendance_mark 只能改「已存在」
+-- 的那筆出缺勤紀錄，沒紀錄的堂次連列都不會列出來、更沒辦法補登。這兩支補上「列出全部堂次
+-- （含未登記）」＋「補登缺堂紀錄」，讓後台可以幫任何學員任何一堂補登，不用再回來下SQL。
+CREATE OR REPLACE FUNCTION admin_list_member_sessions(p_member_db_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_class_ref bigint;
+  v_result    jsonb;
+BEGIN
+  SELECT class_ref INTO v_class_ref FROM members WHERE id = p_member_db_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '查無學員（id=%）', p_member_db_id;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'session_id',    s.id,
+    'date',          s.date,
+    'week_num',      s.week_num,
+    'attendance_id', a.id,
+    'mark',          a.mark,
+    'source',        a.source,
+    'checkin_time',  a.checkin_time
+  ) ORDER BY s.date), '[]'::jsonb)
+  INTO v_result
+  FROM sessions s
+  LEFT JOIN attendance a ON a.session_ref = s.id AND a.member_ref = p_member_db_id
+  WHERE s.class_ref = v_class_ref
+    AND s.is_held = true;
+
+  RETURN v_result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_add_attendance_mark(
+  p_member_ref    bigint,
+  p_session_ref   bigint,
+  p_new_mark      text,
+  p_delete_makeup boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_existing       RECORD;
+  v_makeup         RECORD;
+  v_att_id         bigint;
+  v_old_mark       text;
+  v_had_makeup     boolean := false;
+  v_makeup_deleted boolean := false;
+BEGIN
+  IF p_new_mark NOT IN ('V','L','ML','M','A','O','LL','E','D','N','W','X','F','S1','S2','S3') THEN
+    RAISE EXCEPTION '無效的出缺勤標記：%（應為 V/L/ML/M/A/O/LL/E/D/N/W/X/F/S1/S2/S3 之一）', p_new_mark;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM members m
+    JOIN sessions s ON s.class_ref = m.class_ref
+    WHERE m.id = p_member_ref AND s.id = p_session_ref
+  ) THEN
+    RAISE EXCEPTION '學員（id=%）與堂次（id=%）不屬於同一班別，無法補登', p_member_ref, p_session_ref;
+  END IF;
+
+  SELECT id INTO v_makeup FROM makeups WHERE member_ref = p_member_ref AND session_ref = p_session_ref;
+  v_had_makeup := FOUND;
+  IF v_had_makeup AND p_delete_makeup THEN
+    DELETE FROM makeups WHERE id = v_makeup.id;
+    v_makeup_deleted := true;
+  END IF;
+
+  SELECT id, mark INTO v_existing
+  FROM attendance
+  WHERE member_ref = p_member_ref AND session_ref = p_session_ref;
+
+  IF FOUND THEN
+    v_att_id   := v_existing.id;
+    v_old_mark := v_existing.mark;
+    UPDATE attendance
+       SET mark = p_new_mark, source = 'manual', updated_at = now()
+     WHERE id = v_att_id;
+  ELSE
+    v_old_mark := NULL;
+    INSERT INTO attendance (member_ref, session_ref, mark, source)
+    VALUES (p_member_ref, p_session_ref, p_new_mark, 'manual')
+    RETURNING id INTO v_att_id;
+  END IF;
+
+  INSERT INTO attendance_edit_log (
+    attendance_id, member_ref, session_ref, old_mark, new_mark, makeup_deleted, edited_by
+  ) VALUES (
+    v_att_id, p_member_ref, p_session_ref, v_old_mark, p_new_mark, v_makeup_deleted, auth.email()
+  );
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'attendance_id', v_att_id,
+    'was_new', v_old_mark IS NULL,
+    'had_makeup', v_had_makeup,
+    'makeup_deleted', v_makeup_deleted
+  );
+END;
+$$;
+
 -- ── 7.8 精舍培訓課程子系統 ─────────────────────────────────
 CREATE OR REPLACE FUNCTION get_training_classes()
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
@@ -4348,6 +4457,10 @@ GRANT  EXECUTE ON FUNCTION admin_transfer_mark_attended(bigint, text)           
 GRANT  EXECUTE ON FUNCTION admin_transfer_mark_absent(bigint)                                               TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_transfer_set_ctis_updated(bigint, boolean)                                 TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_edit_attendance_mark(bigint, text, boolean)                                TO authenticated;
+REVOKE EXECUTE ON FUNCTION admin_list_member_sessions(bigint)                                              FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION admin_list_member_sessions(bigint)                                              TO authenticated;
+REVOKE EXECUTE ON FUNCTION admin_add_attendance_mark(bigint, bigint, text, boolean)                        FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION admin_add_attendance_mark(bigint, bigint, text, boolean)                        TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_makeup_cancel_attend(bigint)                                               TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_transfer_reset_to_registered(bigint)                                       TO authenticated;
 GRANT  EXECUTE ON FUNCTION admin_get_sync_status()                                                          TO authenticated;

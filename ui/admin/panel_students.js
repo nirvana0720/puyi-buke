@@ -185,14 +185,23 @@
     await loadAndRenderDetail(memberDbId, body);
   }
 
-  /** 重新抓 get_student_view 並整包重繪明細視窗（編輯出缺勤成功/取消後都靠這支刷新） */
+  /** 重新抓 get_student_view + admin_list_member_sessions 並整包重繪明細視窗
+   *  （編輯／新增出缺勤成功或取消後都靠這支刷新）
+   *  2026-09-08：改用 admin_list_member_sessions 取得「全部堂次」（含未登記），
+   *  不再只靠 get_student_view.attendance（只有已有紀錄的堂次），
+   *  這樣沒登記的堂次才有辦法在畫面上顯示出來、補登。 */
   async function loadAndRenderDetail(memberDbId, body) {
     try {
-      const { data, error } = await _sb.rpc('get_student_view', { p_member_db_id: memberDbId });
+      const [{ data, error }, sessRes] = await Promise.all([
+        _sb.rpc('get_student_view', { p_member_db_id: memberDbId }),
+        _sb.rpc('admin_list_member_sessions', { p_member_db_id: memberDbId }),
+      ]);
       if (error) throw new Error(error.message);
       if (!data) { body.innerHTML = '<p class="buke-empty">查無資料。</p>'; return; }
-      body.innerHTML = renderStudentDetail(data);
-      wireAttendanceEdit(body, data, memberDbId);
+      if (sessRes.error) throw new Error(sessRes.error.message);
+      const sessions = sessRes.data || [];
+      body.innerHTML = renderStudentDetail(data, sessions);
+      wireAttendanceEdit(body, data, sessions, memberDbId);
     } catch (e) {
       body.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
     }
@@ -205,11 +214,14 @@
   const MARK_OPTIONS = ['V', 'L', 'LL', 'A', 'O', 'M', 'ML', 'D', 'N', 'E', 'W', 'X', 'S1', 'S2', 'S3'];
   const SOURCE_LABEL = { manual: '人工登打', api: '刷卡同步' };
 
-  /** 幫每一列出缺勤掛上「編輯」互動：改標記、遇到對應補課登記時詢問是否一併刪除 */
-  function wireAttendanceEdit(body, v, memberDbId) {
-    function bindEditBtn(tr) {
-      const btn = tr.querySelector('.btn-edit-att');
-      btn?.addEventListener('click', () => enterEditMode(tr));
+  /** 幫每一列出缺勤掛上「編輯」／「新增」互動：改標記，或幫沒有紀錄的堂次補登一筆，
+   *  遇到對應補課登記時詢問是否一併刪除
+   *  2026-09-08：sessions 是該學員班別「全部堂次」（含未登記的），沒紀錄的堂次
+   *  顯示「新增」，按下去呼叫 admin_add_attendance_mark 而不是 admin_edit_attendance_mark */
+  function wireAttendanceEdit(body, v, sessions, memberDbId) {
+    function bindBtns(tr) {
+      tr.querySelector('.btn-edit-att')?.addEventListener('click', () => enterEditMode(tr));
+      tr.querySelector('.btn-add-att')?.addEventListener('click', () => enterEditMode(tr));
     }
 
     function enterEditMode(tr) {
@@ -231,13 +243,16 @@
     }
 
     function exitEditMode(tr) {
-      const a = (v.attendance || []).find(x => String(x.id) === tr.dataset.attendanceId);
+      const s = sessions.find(x => String(x.session_id) === tr.dataset.sessionId);
+      const hasRecord   = !!(s && s.attendance_id);
       const markCell    = tr.querySelector('.cell-mark');
       const actionsCell = tr.querySelector('.cell-actions');
-      markCell.dataset.mark = a?.mark || '';
-      markCell.textContent  = MARK_LABEL[a?.mark] || a?.mark || '—';
-      actionsCell.innerHTML = `<button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>`;
-      bindEditBtn(tr);
+      markCell.dataset.mark = (hasRecord ? s.mark : '') || '';
+      markCell.textContent  = hasRecord ? (MARK_LABEL[s.mark] || s.mark || '—') : '未登記';
+      actionsCell.innerHTML = hasRecord
+        ? `<button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>`
+        : `<button class="buke-btn btn-add-att" style="font-size:12px;padding:3px 10px;min-height:28px">新增</button>`;
+      bindBtns(tr);
     }
 
     function confirmAndSave(tr) {
@@ -265,15 +280,23 @@
     }
 
     async function doSave(tr, newMark, deleteMakeup) {
-      const attendanceId = Number(tr.dataset.attendanceId);
+      const attendanceId = tr.dataset.attendanceId ? Number(tr.dataset.attendanceId) : null;
+      const sessionId     = Number(tr.dataset.sessionId);
       const msgEl = tr.querySelector('.att-edit-msg');
       if (msgEl) msgEl.innerHTML = '<span style="color:var(--muted)">儲存中…</span>';
       try {
-        const { error } = await _sb.rpc('admin_edit_attendance_mark', {
-          p_attendance_id: attendanceId,
-          p_new_mark: newMark,
-          p_delete_makeup: deleteMakeup,
-        });
+        const { error } = attendanceId
+          ? await _sb.rpc('admin_edit_attendance_mark', {
+              p_attendance_id: attendanceId,
+              p_new_mark: newMark,
+              p_delete_makeup: deleteMakeup,
+            })
+          : await _sb.rpc('admin_add_attendance_mark', {
+              p_member_ref: memberDbId,
+              p_session_ref: sessionId,
+              p_new_mark: newMark,
+              p_delete_makeup: deleteMakeup,
+            });
         if (error) throw new Error(error.message);
         await loadAndRenderDetail(memberDbId, body);
       } catch (e) {
@@ -281,25 +304,29 @@
       }
     }
 
-    body.querySelectorAll('tr[data-attendance-id]').forEach(bindEditBtn);
+    body.querySelectorAll('tr[data-session-id]').forEach(bindBtns);
   }
 
-  function renderStudentDetail(v) {
-    const attendance = v.attendance || [];
-    const makeups     = v.makeups     || [];
+  function renderStudentDetail(v, sessions) {
+    const makeups = v.makeups || [];
 
-    const attRows = attendance.length
-      ? attendance.map(a => `
-        <tr style="border-bottom:1px solid var(--line)" data-attendance-id="${a.id}" data-session-id="${a.session_id}">
-          <td style="padding:6px 10px">${a.date}</td>
-          <td style="padding:6px 10px;text-align:center">${a.week_num ?? '—'}</td>
-          <td class="cell-mark" style="padding:6px 10px" data-mark="${a.mark || ''}">${MARK_LABEL[a.mark] || a.mark || '—'}</td>
-          <td style="padding:6px 10px;color:var(--muted);font-size:13px">${SOURCE_LABEL[a.source] || a.source || ''}</td>
+    const attRows = (sessions && sessions.length)
+      ? sessions.map(s => {
+          const hasRecord = !!s.attendance_id;
+          return `
+        <tr style="border-bottom:1px solid var(--line)"${hasRecord ? ` data-attendance-id="${s.attendance_id}"` : ''} data-session-id="${s.session_id}">
+          <td style="padding:6px 10px">${s.date}</td>
+          <td style="padding:6px 10px;text-align:center">${s.week_num ?? '—'}</td>
+          <td class="cell-mark" style="padding:6px 10px" data-mark="${s.mark || ''}">${hasRecord ? (MARK_LABEL[s.mark] || s.mark || '—') : '未登記'}</td>
+          <td style="padding:6px 10px;color:var(--muted);font-size:13px">${SOURCE_LABEL[s.source] || s.source || ''}</td>
           <td class="cell-actions" style="padding:6px 10px">
-            <button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>
+            ${hasRecord
+              ? `<button class="buke-btn buke-btn-ghost btn-edit-att" style="font-size:12px;padding:3px 10px;min-height:28px">編輯</button>`
+              : `<button class="buke-btn btn-add-att" style="font-size:12px;padding:3px 10px;min-height:28px">新增</button>`}
           </td>
-        </tr>`).join('')
-      : `<tr><td colspan="5" style="padding:10px;color:var(--muted)">尚無出缺勤紀錄</td></tr>`;
+        </tr>`;
+        }).join('')
+      : `<tr><td colspan="5" style="padding:10px;color:var(--muted)">尚無堂次資料</td></tr>`;
 
     const makeupRows = makeups.length
       ? makeups.map(mk => `
