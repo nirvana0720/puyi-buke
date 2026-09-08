@@ -4,6 +4,11 @@
 'use strict';
 
 const ABSENT_MARKS = new Set(['O', 'A', 'LL', 'E', 'W', 'X', 'S1', 'S2', 'S3']);
+// 2026-09-08 修正：「實體出席」改成白名單比對（跟 db/rpc_admin_stats.sql 的
+// admin_student_stats 一致：V/L/ML/D/N 才算出席），不能再用「不是缺課代碼就算出席」
+// 這種黑名單邏輯——否則 F（放香）等「兩邊都不算」的代碼會被誤算進出席，導致學員頁
+// 「上課進度」出席數比出缺勤明細實際列出的堂數多。
+const PHYS_MARKS = new Set(['V', 'L', 'ML', 'D', 'N']);
 
 /** 從 sessionStorage 取登入資料，查無則回 null */
 function getSession() {
@@ -41,7 +46,7 @@ async function fetchStudentViewViaRpc(sb, memberDbId) {
   // 出缺勤統計
   const allAttend = data.attendance || [];
   const stats = {
-    phys:   allAttend.filter(a => !ABSENT_MARKS.has(a.mark)).length,
+    phys:   allAttend.filter(a =>  PHYS_MARKS.has(a.mark)).length,
     absent: allAttend.filter(a =>  ABSENT_MARKS.has(a.mark)).length,
     makeup: (data.makeups || []).filter(m => m.status === '已完成').length,
   };
