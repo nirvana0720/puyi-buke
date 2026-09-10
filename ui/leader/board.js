@@ -67,15 +67,17 @@ function calcStats(marks, total, unregisteredAbsences = [], makeups = []) {
   // 全勤：有出席紀錄且全是 V
   const perfect = held > 0 && marks.every(m => m === 'V');
 
-  // 勤學四態——跟結業達標是不同標準
-  // 2026-09-10 修正：原本「缺課總數 > 3 就永久鎖定無法勤學」（2026-07-03 定案），星星改口徑：
+  // 勤學三態——跟結業達標是不同標準
+  // 2026-09-10 第一次修正：原本「缺課總數 > 3 就永久鎖定無法勤學」（2026-07-03 定案），改成
   // 只要目前手上沒有還沒補的（absent=0，全部補完），不管這學期總共缺過幾次都算「已勤學」，
-  // 不再受缺課總數上限卡住，也不要求要結業。跟後台 admin_student_stats 用同一套新公式。
+  // 不再受缺課總數上限卡住，也不要求要結業。
+  // 2026-09-10 第二次修正：補完就一定能拿到已勤學，所以「可勤學」／「無法勤學」這兩個還沒
+  // 補完時的中間狀態不用再分（「無法勤學」這個名字在新規則下也不準確），合併成「尚未勤學」，
+  // 還差幾堂待補直接看 absent 數字即可。跟後台 admin_student_stats 用同一套新公式。
   let diligent;
   if (total_absent === 0)                        diligent = '目前全勤';
   else if (absent === 0)                          diligent = '已勤學';
-  else if (total_absent <= 3 && absent > 0)       diligent = '可勤學';
-  else                                            diligent = '無法勤學';
+  else                                            diligent = '尚未勤學';
 
   return {
     physical, absent, makeup, total_credit, total_absent, overdue_absent,

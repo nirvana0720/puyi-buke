@@ -1,4 +1,4 @@
-// 職責：學員總表——全部在學學員，可篩選班/組、排序距結業/可勤學待補
+// 職責：學員總表——全部在學學員，可篩選班/組、排序距結業/尚未勤學待補
 
 'use strict';
 
@@ -73,7 +73,7 @@
         <label style="font-size:14px;color:var(--muted)">排序：
           <select id="st-sort" class="buke-select" style="font-size:14px;min-height:36px">
             <option value="short" ${_sortKey==='short' ? 'selected':''}>距結業（差最多的在前）</option>
-            <option value="pending" ${_sortKey==='pending' ? 'selected':''}>可勤學待補（多的在前）</option>
+            <option value="pending" ${_sortKey==='pending' ? 'selected':''}>尚未勤學待補（多的在前）</option>
           </select>
         </label>
         <button id="btn-export-st" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:5px 14px;min-height:34px">
@@ -130,9 +130,11 @@
   function sorted(rows) {
     return [...rows].sort((a, b) => {
       if (_sortKey === 'pending') {
-        // 可勤學（待補多）排前；其他排後
-        const pa = a.diligent === '可勤學' ? a.absent : -1;
-        const pb = b.diligent === '可勤學' ? b.absent : -1;
+        // 尚未勤學（待補多）排前；已勤學/全勤排後
+        // 2026-09-10：原本只挑「可勤學」（排除「無法勤學」）排到前面，兩態合併成「尚未勤學」後
+        // 不再分這兩種，只要還有欠補的（absent>0）都算，一併納入排序。
+        const pa = a.diligent === '尚未勤學' ? a.absent : -1;
+        const pb = b.diligent === '尚未勤學' ? b.absent : -1;
         return pb - pa || b.short - a.short;
       }
       // 距結業（short 大的排前）；同差幾堂時，缺課總數（含已補）多的排前，跟勤學狀態的嚴重度對齊
@@ -399,10 +401,12 @@
       : `<span style="color:var(--danger-tx)">差 ${r.short} 堂</span>`;
 
     let diligentCell = '';
+    // 2026-09-10：勤學狀態從四態簡化成三態——「可勤學」／「無法勤學」這兩個「還沒補完」的
+    // 中間狀態合併成「尚未勤學」（補完就會變已勤學，不再有「無法」這種永久判定），
+    // 還差幾堂待補直接顯示 absent 數字，不用額外分級。
     if (r.diligent === '目前全勤')      diligentCell = '<span class="buke-badge makeup">目前全勤</span>';
     else if (r.diligent === '已勤學')   diligentCell = '<span class="buke-badge pass">已勤學</span>';
-    else if (r.diligent === '可勤學')   diligentCell = `<span class="buke-badge warn">可勤學（還差 ${r.absent} 待補）</span>`;
-    else                                diligentCell = `<span class="buke-badge danger">無法勤學（缺課 ${r.total_absent} 堂）</span>`;
+    else                                diligentCell = `<span class="buke-badge warn">尚未勤學（還差 ${r.absent} 待補）</span>`;
 
     // 2026-09-10：「資料不全」警示——只是提醒「勤學狀態」判斷所根據的出缺勤紀錄
     // 可能不完整（已上課但完全沒登記的堂次），不影響上面既有的勤學四態判定邏輯。
@@ -436,8 +440,7 @@
       r.name, r.class_name, r.group_id || '',
       r.phys, r.absent, r.makeup,
       r.grad_ok ? '已達標' : `差${r.short}堂`,
-      r.diligent === '可勤學' ? `可勤學（還差${r.absent}待補）`
-        : r.diligent === '無法勤學' ? `無法勤學（缺課${r.total_absent}堂）`
+      r.diligent === '尚未勤學' ? `尚未勤學（還差${r.absent}待補）`
         : r.diligent,
     ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
     const csv  = [header.join(','), ...lines].join('\n');
