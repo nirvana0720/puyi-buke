@@ -1612,7 +1612,8 @@ RETURNS TABLE(
   total_absent   int,
   overdue_absent int,
   overdue_dates  date[],
-  x_count        int
+  x_count        int,
+  missing        int
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1645,6 +1646,19 @@ BEGIN
       COUNT(a.id) FILTER (WHERE a.mark = 'M')::int                            AS makeup,
       COUNT(a.id) FILTER (WHERE a.mark = 'ML')::int                           AS ml_makeup,
       COUNT(a.id) FILTER (WHERE a.mark = 'X')::int                            AS x_count,
+      -- 2026-09-10：資料不全警示——該學員所屬班別「已上」的堂次裡，有幾堂完全沒有
+      -- 出缺勤紀錄（不是缺課也不是出席，是根本沒登記），只是警示旗標，不影響
+      -- grad_ok／diligent 既有判定邏輯。
+      (
+        SELECT COUNT(*)::int FROM sessions s3
+        WHERE s3.class_ref = c.id
+          AND s3.is_held = true
+          AND s3.date <= CURRENT_DATE
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance a3
+            WHERE a3.session_ref = s3.id AND a3.member_ref = m.id
+          )
+      )                                                                        AS missing,
       (
         COUNT(a.id) FILTER (WHERE a.mark IS NOT NULL) > 0
         AND COUNT(a.id) FILTER (WHERE a.mark <> 'V') = 0
@@ -1701,7 +1715,8 @@ BEGIN
     (b.absent + b.makeup + b.ml_makeup)                                       AS total_absent,
     b.overdue_absent,
     COALESCE(b.overdue_dates, ARRAY[]::date[])                                AS overdue_dates,
-    b.x_count
+    b.x_count,
+    b.missing
   FROM base b
   ORDER BY b.class_name, b.group_id NULLS LAST, b.name;
 END;

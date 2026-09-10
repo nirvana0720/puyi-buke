@@ -13,10 +13,12 @@
   let _scheduleMap = new Map(); // class_ref → {day_of_week, day_night}（供班別下拉依星期排序）
 
   let _sb = null;
+  let _container = null; // 2026-09-10：記住外層容器，補登/編輯出缺勤成功後要拿它刷新學員總表
 
   async function loadStudentsPanel(sb, container, opts) {
     // opts: { classRef, className } 從各班總覽的「看名單」帶入
     _sb = sb;
+    _container = container;
     _filterClass = opts?.classRef  ?? null;
     _filterGroup = '';
     _sortKey     = 'short';
@@ -35,6 +37,19 @@
       applyAndRender(container);
     } catch (e) {
       container.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
+    }
+  }
+
+  /** 2026-09-10：出缺勤明細視窗裡編輯／新增成功後，重新抓 admin_student_stats 並刷新
+   *  外層「學員總表」——原本編輯只會刷新彈出視窗自己，外層總表的出席/缺課/勤學狀態
+   *  是進面板時抓的一次性快照，補登完不會自動更新，容易讓人誤以為沒存到。 */
+  async function refreshStudentsList() {
+    if (!_sb) return;
+    try {
+      _allRows = await fetchAllStudentStats(_sb);
+      if (_container) applyAndRender(_container);
+    } catch (_) {
+      // 靜默失敗即可：明細視窗本身已經刷新成功，外層總表頂多要等下次進面板才會更新
     }
   }
 
@@ -299,6 +314,7 @@
             });
         if (error) throw new Error(error.message);
         await loadAndRenderDetail(memberDbId, body);
+        await refreshStudentsList();
       } catch (e) {
         if (msgEl) msgEl.innerHTML = `<div class="buke-msg err">❌ ${e.message}</div>`;
       }
@@ -387,6 +403,15 @@
     else if (r.diligent === '已勤學')   diligentCell = '<span class="buke-badge pass">已勤學</span>';
     else if (r.diligent === '可勤學')   diligentCell = `<span class="buke-badge warn">可勤學（還差 ${r.absent} 待補）</span>`;
     else                                diligentCell = `<span class="buke-badge danger">無法勤學（缺課 ${r.total_absent} 堂）</span>`;
+
+    // 2026-09-10：「資料不全」警示——只是提醒「勤學狀態」判斷所根據的出缺勤紀錄
+    // 可能不完整（已上課但完全沒登記的堂次），不影響上面既有的勤學四態判定邏輯。
+    if (r.missing > 0) {
+      diligentCell += `<br><span class="buke-badge warn" style="margin-top:4px;display:inline-block;font-size:12px"
+        title="這位學員所屬班別有 ${r.missing} 堂已上課，但完全沒有出缺勤紀錄（不是缺課也不是出席，是根本沒登記）。上面的勤學狀態只根據「有登記」的紀錄計算，可能不準確，建議對照紙本或原始資料確認。">
+        ⚠️ 資料不全（${r.missing} 堂未登記）
+      </span>`;
+    }
 
     return `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:8px 10px;font-weight:500">

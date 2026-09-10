@@ -1,18 +1,24 @@
-db/full_setup_all_in_one.sql、ui/student/student.js、ui/admin/panel_students.js：修正學員頁出席
-統計把F誤算進出席，並新增後台「補登缺堂出缺勤」工具。
+db/rpc_admin_stats.sql、db/full_setup_all_in_one.sql、ui/admin/panel_students.js：
+學員總表補登後不刷新的修正，加上「資料不全」警示。
 
-1. ui/student/student.js：出缺勤明細清單本來就有把F（放香）獨立標示、不計入堂次編號，這部分是對
-的；但「上課進度」進度條跟KPI方塊的出席數，是用「不是缺課代碼（O/A/LL/E/W/X/S1/S2/S3）就算出
-席」這種黑名單邏輯算的，F不在缺課代碼清單裡，於是被誤算成出席，跟後台admin_student_stats用白
-名單（V/L/ML/D/N才算出席、F/M兩邊都不算）的邏輯對不起來。已改成跟admin_student_stats同一份白
-名單，純前端邏輯修正，全站所有學員只要出缺勤紀錄裡有F都會一併修正。
+起因一：星星回報在明細視窗補登一筆出席後，關掉視窗回到學員總表，出席數字還是舊的沒更新。查證
+後確認「學員總表」的出席/缺課/勤學狀態是進面板當下抓一次的快照（存在模組變數_allRows），編輯
+或新增出缺勤只會刷新彈出視窗自己（loadAndRenderDetail），從來不會通知外層總表重新抓資料——
+不是沒存進資料庫，是畫面沒同步更新，純顯示問題。已改成：編輯或新增出缺勤存檔成功後，除了刷新
+視窗本身，也重新呼叫admin_student_stats刷新外層總表（新增refreshStudentsList()）。
 
-2. db/full_setup_all_in_one.sql（新增admin_list_member_sessions、admin_add_attendance_mark兩支
-RPC）＋ui/admin/panel_students.js：後台「編輯出缺勤」工具原本只能改「已存在」的紀錄，沒紀錄的堂
-次連列都不會列出來、沒辦法補登（曾純芬「二日中級班」17堂以前的歷史資料就是這樣，明細裡完全看
-不到、也補不了）。新增：①列出學員所屬班別「全部堂次」（含未登記，LEFT JOIN attendance）；②幫
-沒紀錄的堂次補登一筆，若已有紀錄則退化成跟原本編輯一樣直接改，同樣支援「有補課登記時是否一併
-刪除」跟寫入稽核紀錄。前端出缺勤明細視窗沒紀錄的堂次改顯示「未登記」＋「新增」按鈕。
+起因二：同一次回報裡，星星發現曾純芬在學員總表顯示「目前全勤」，但實際上她只有5筆出席紀錄。
+查證後：「勤學狀態」四態只根據absent／makeup／ml_makeup計算，完全沒有出缺勤紀錄的堂次（不是
+缺課也不是出席，是根本沒登記）不會被算進去，缺課數字自然是0，「目前全勤」在數字上沒有錯，但
+容易讓人誤以為她真的每堂都到——她所屬「二日中級班」自2026-08-04資料清理後有一大段歷史紀錄
+遺失，這才是真正原因。跟星星確認過（AskUserQuestion）：不動既有勤學四態判定邏輯，只加一個
+警示旗標。
 
-已在普宜正式環境（Supabase SQL Editor）直接部署測試通過，這次同步full_setup_all_in_one.sql，讓
-其他分院Fork安裝時也是修好的版本。
+這次改動：
+1. admin_student_stats 新增回傳欄位 missing——該學員所屬班別「已上（is_held=true 且日期已過）」
+   的堂次裡，有幾堂完全沒有出缺勤紀錄。純新增欄位，不影響 grad_ok／diligent 既有計算。
+2. panel_students.js 的 studentRow：missing > 0 時，在勤學狀態格子下面多顯示一行
+   「⚠️ 資料不全（N堂未登記）」警示（滑鼠移上去有說明文字），不改動原本的勤學狀態文字/顏色。
+
+已於正式環境 Supabase SQL Editor 手動部署 admin_student_stats 新版本並驗證
+（曾純芬 member_db_id=13233：phys=5, absent=0, diligent=目前全勤, missing=15，符合預期）。
