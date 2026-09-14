@@ -43,7 +43,13 @@
     });
 
     // 任何清單內的按鈕／勾選操作後，稍等一下再重新整理清單，避免標完成／刪除／編輯後畫面卡在舊狀態
+    // 2026-09-14 修正：原本這里是任何點擊都排 400ms 後全列重新整理，但 標完成/取消完成/刪除/刪除到場紀錄
+    // 這些按鈕都是先彈出 inlineConfirm 確認框（需要再點一次「確定」才真正實際寫入），編輯按鈕則是彈出編輯表單，
+    // 都不是當下寫入。用戶點「標完成」第一下只是彈確認框，但 400ms 後就被這個監聽器觸發的 refreshList 把整個
+    // #ml-list 重寫掉，確認框跟著消失，來不及點「確定」寫入就被清掉（就是彈出的「按下標完成，畫面就跳掉，無法寫入」問題）。
+    // 改成排除這些只會彈出確認框/編輯表單的按鈕，讓 refreshList 只在真正實際寫入發生後（點 .ic-ok 確認、儲存編輯、勾選 CTIS）才觸發。
     container.querySelector('#ml-list').addEventListener('click', e => {
+      if (e.target.closest('.btn-complete, .btn-uncomplete, .btn-del-mu, .btn-del-att, .btn-edit-mu')) return;
       if (e.target.closest('button, input[type=checkbox]')) {
         setTimeout(() => refreshList(container), 400);
       }
