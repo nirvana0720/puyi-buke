@@ -211,7 +211,7 @@
       </div>
       <div class="tr-meta-line" style="font-size:14px;color:var(--muted);margin:6px 0">
         原堂：${r._from_date}　→　調去：${r._to_class}　${r.to_date}
-        ${r.late_mark ? `　出席狀態：${formatAttendStatus(r)}` : ''}　登記人：${r.registered_by}
+        ${r.late_mark ? `　出席狀態：${formatAttendStatus(r)}` : ''}${r.attended_at ? `　出席時間：${new Date(r.attended_at).toLocaleString('zh-TW',{hour12:false})}` : ''}　登記人：${r.registered_by}
         ${r.note ? `　備註：${r.note}` : ''}
       </div>
       <div class="tr-ctis-row" style="margin:6px 0">
