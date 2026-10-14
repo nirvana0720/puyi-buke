@@ -3276,12 +3276,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_member_ref  bigint;
-  v_session_ref bigint;
-  v_deadline    date;
-  v_status      text;
-  v_cur_mark    text;
-  v_new_mark    text;
+  v_member_ref   bigint;
+  v_session_ref  bigint;
+  v_deadline     date;
+  v_status       text;
+  v_cur_mark     text;
+  v_new_mark     text;
+  v_has_attended boolean;
 BEGIN
   PERFORM _kiosk_verify_staff(p_staff_id);
 
@@ -3297,7 +3298,16 @@ BEGIN
     RAISE EXCEPTION '此堂補課已經完成過了，請勿重複操作';
   END IF;
 
-  IF current_date > v_deadline THEN
+  -- 2026-09-17 修正：學員如果已經有到場刷卡紀錄（makeup_attendances 裡有 attended_at），
+  -- 代表人真的來過、只是櫃台結案動作慢了才補按「補課完成」，這種情況不該被期限擋下；
+  -- 期限檢查只用來擋「根本沒來、事後想補登」的情況（呼應到場提醒 3 小時未結案那組警示，
+  -- 讓櫃台能就地把已到場但逾期的補課直接結案，不用再跑後台 complete_makeup）。
+  SELECT EXISTS (
+    SELECT 1 FROM makeup_attendances
+    WHERE makeup_ref = p_makeup_id AND attended_at IS NOT NULL
+  ) INTO v_has_attended;
+
+  IF NOT v_has_attended AND current_date > v_deadline THEN
     RAISE EXCEPTION '已逾期（截止日 %），無法完成補課', v_deadline;
   END IF;
 
