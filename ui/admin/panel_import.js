@@ -291,11 +291,14 @@
       .in('member_id', ids);
     if (error || !data || !data.length) return [];
 
+    const classById = Object.fromEntries(classes.map(c => [c.id, c]));
+    // 已封存（狀態＝已結業）的班別不列入比對：升班（例如初級升中級）是正常情況，
+    // 不該每次都被「編號已存在於舊班」的警示打擾；只比對進行中／準備中的班別。
     const countByRef = {};
     for (const row of data) {
+      if (classById[row.class_ref]?.status === '已結業') continue;
       countByRef[row.class_ref] = (countByRef[row.class_ref] || 0) + 1;
     }
-    const classById = Object.fromEntries(classes.map(c => [c.id, c]));
     return Object.entries(countByRef).map(([ref, count]) => ({
       className: classById[ref]?.class_name || `未知班別（id=${ref}）`,
       count,
