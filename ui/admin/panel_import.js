@@ -173,10 +173,14 @@
     const thisYear = new Date().getFullYear();
 
     container.innerHTML = `
-      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">
-        上傳官方 Excel（.xlsx）→ 系統自動判斷這份是「名冊」還是「連出缺勤都有的上課紀錄」，並自動解析建檔／更新。
-        若表內有「執事」欄（學長/班長/點名），會一併寫入角色指派。
-      </p>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+        <div><b>上傳官方 Excel（.xlsx）。系統會自動判斷您上傳的是哪一種：</b></div>
+        <ul style="margin:4px 0 4px 20px;padding:0">
+          <li><b>只有名冊（沒有日期欄）</b>：只會新增或更新學員的姓名、性別、組別等基本資料，不會動到任何出缺勤。想修正組別、補人進名單，請用這種。</li>
+          <li><b>含出缺勤的上課紀錄（有日期欄）</b>：除了學員資料，還會用 Excel 裡的出缺勤，覆蓋這個班已有的紀錄；空白的格子會被當成缺課。請小心使用。</li>
+        </ul>
+        <div>若表內有「執事」欄（學長／班長／點名），會一併寫入角色指派。重新匯入同一個班，休學的學員會被改回在學。</div>
+      </div>
 
       <!-- Step 1: 選班別 -->
       <div class="buke-card" style="margin-bottom:14px">
