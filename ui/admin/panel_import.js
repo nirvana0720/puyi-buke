@@ -20,6 +20,7 @@
     { keyword: '組別',     field: 'group_id' },
     { keyword: '組號',     field: 'group_num' },
     { keyword: '執事',     field: 'role' },
+    { keyword: '職司',     field: 'role' },
     { keyword: '幹部',     field: 'role' },
     { keyword: '職稱',     field: 'role' },
     { keyword: '角色',     field: 'role' },
@@ -95,6 +96,18 @@
     if (/組$/.test(g)) return g;
     if (gender === '男' || gender === '女') return `${gender}${g}組`;
     return g;
+  }
+
+  /** 解讀「執事／職司」欄：回傳 { base: '班長'|'學長'|null, rollcall: boolean }
+   *  - 一格可以寫兩個執事，中間用「/」「、」「,」或空白分隔都可以（例如「學長/點名」），
+   *    程式用「文字包含」判斷，不依賴分隔符號。
+   *  - 班長與學長只能擇一（同時出現以班長為準）；「點名」是另外兼任，可以疊加。 */
+  function parseRoleText(text) {
+    const t = String(text || '');
+    return {
+      base: t.includes('班長') ? '班長' : (t.includes('學長') ? '學長' : null),
+      rollcall: t.includes('點名'),
+    };
   }
 
   function buildParsed(rows, header, dateColsRaw, year) {
@@ -185,7 +198,8 @@
           <li><b>只有名冊（沒有日期欄）</b>：只會新增或更新學員的姓名、性別、組別等基本資料，不會動到任何出缺勤。想修正組別、補人進名單，請用這種。</li>
           <li><b>含出缺勤的上課紀錄（有日期欄）</b>：除了學員資料，還會用 Excel 裡的出缺勤，覆蓋這個班已有的紀錄；空白的格子會被當成缺課。請小心使用。</li>
         </ul>
-        <div>若表內有「執事」欄（學長／班長／點名），會一併寫入角色指派。重新匯入同一個班，休學的學員會被改回在學。</div>
+        <div>若表內有「執事」或「職司」欄，會一併寫入角色指派：欄內填「班長」「學長」「點名」。<b>一個人有兩個執事，中間用「/」或「、」分隔</b>，例如「學長/點名」。班長與學長只能擇一（同時寫以班長為準）；名單裡有填執事的人，原本的學長／班長身分會被這次的內容取代。</div>
+        <div>重新匯入同一個班，休學的學員會被改回在學。</div>
       </div>
 
       <!-- Step 1: 選班別 -->
@@ -436,7 +450,10 @@
           </table>
         </div>
         ${members.length > 5 ? `<p style="font-size:13px;color:var(--muted);margin:8px 0 0">…以及另外 ${members.length - 5} 筆</p>` : ''}
-        ${hasRole ? '<p style="font-size:13px;color:var(--ok-tx);margin:8px 0 0">✅ 偵測到執事欄，將依內容寫入角色指派（學長／班長／點名，其他文字略過）</p>' : ''}
+        ${hasRole ? (() => {
+          const rs = members.map(m => parseRoleText(m.role));
+          return `<p style="font-size:13px;color:var(--ok-tx);margin:8px 0 0">✅ 偵測到執事／職司欄，將寫入角色指派：班長 ${rs.filter(r => r.base === '班長').length} 位、學長 ${rs.filter(r => r.base === '學長').length} 位、兼點名 ${rs.filter(r => r.rollcall).length} 位（其他文字略過）</p>`;
+        })() : ''}
 
         ${hasDateCols ? `
         <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin:14px 0;cursor:pointer">
@@ -555,16 +572,13 @@
         if (error) throw new Error(`members upsert 失敗：${error.message}`);
       }
 
-      // 2. upsert assignments（執事欄有值才處理：學長/班長/點名，其餘略過）
+      // 2. 寫入角色指派（執事／職司欄有值才處理）
+      //    資料庫自 重構45 起允許「學長＋兼點名」並存（唯一鍵是 member_id＋class_ref＋role），
+      //    所以這裡比照後台「角色指派」頁的做法：先清掉這些人原有的基本身分（學員／學長／班長）
+      //    與點名，再寫入這次名單的內容，不使用 upsert，避免唯一鍵不符。
       const withRole = members
-        .map(m => {
-          let role = null;
-          if (m.role.includes('班長')) role = '班長';
-          else if (m.role.includes('學長')) role = '學長';
-          else if (m.role.includes('點名')) role = '點名';
-          return role ? { ...m, _assignRole: role } : null;
-        })
-        .filter(Boolean);
+        .map(m => ({ ...m, _r: parseRoleText(m.role) }))
+        .filter(m => m._r.base || m._r.rollcall);
 
       if (withRole.length) {
         const ids = withRole.map(m => m.member_id);
@@ -576,23 +590,47 @@
         if (qErr) throw new Error(`查學員 id 失敗：${qErr.message}`);
 
         const idMap = Object.fromEntries((dbMembers || []).map(r => [r.member_id, r]));
-        const assignRows = withRole.flatMap(m => {
+        const baseIds = [...new Set(withRole.filter(m => m._r.base && idMap[m.member_id]).map(m => m.member_id))];
+        const rollIds = [...new Set(withRole.filter(m => m._r.rollcall && idMap[m.member_id]).map(m => m.member_id))];
+
+        for (let i = 0; i < baseIds.length; i += BATCH) {
+          const { error } = await sb.from('assignments').delete()
+            .eq('class_ref', classRef).in('member_id', baseIds.slice(i, i + BATCH))
+            .in('role', ['學員', '學長', '班長']);
+          if (error) throw new Error(`清除舊身分失敗：${error.message}`);
+        }
+        for (let i = 0; i < rollIds.length; i += BATCH) {
+          const { error } = await sb.from('assignments').delete()
+            .eq('class_ref', classRef).in('member_id', rollIds.slice(i, i + BATCH))
+            .eq('role', '點名');
+          if (error) throw new Error(`清除舊點名身分失敗：${error.message}`);
+        }
+
+        const seen = new Set();
+        const assignRows = [];
+        for (const m of withRole) {
           const dbMem = idMap[m.member_id];
-          if (!dbMem) return [];
-          const isLeader = m._assignRole === '學長';
-          return [{
-            member_id:   m.member_id,
-            class_ref:   classRef,
-            role:        m._assignRole,
-            scope_group: isLeader ? (dbMem.group_id || combineGroupId(m.gender, m.group_id) || null) : null,
-          }];
-        });
+          if (!dbMem) continue;
+          if (m._r.base && !seen.has(m.member_id + '|base')) {
+            seen.add(m.member_id + '|base');
+            assignRows.push({
+              member_id:   m.member_id,
+              class_ref:   classRef,
+              role:        m._r.base,
+              scope_group: m._r.base === '學長'
+                ? (dbMem.group_id || combineGroupId(m.gender, m.group_id) || null)
+                : null,
+            });
+          }
+          if (m._r.rollcall && !seen.has(m.member_id + '|roll')) {
+            seen.add(m.member_id + '|roll');
+            assignRows.push({ member_id: m.member_id, class_ref: classRef, role: '點名', scope_group: null });
+          }
+        }
 
         for (let i = 0; i < assignRows.length; i += BATCH) {
-          const { error } = await sb
-            .from('assignments')
-            .upsert(assignRows.slice(i, i + BATCH), { onConflict: 'member_id,class_ref' });
-          if (error) throw new Error(`assignments upsert 失敗：${error.message}`);
+          const { error } = await sb.from('assignments').insert(assignRows.slice(i, i + BATCH));
+          if (error) throw new Error(`寫入角色指派失敗：${error.message}`);
         }
       }
 
