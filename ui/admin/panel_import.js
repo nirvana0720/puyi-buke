@@ -99,9 +99,15 @@
 
   function buildParsed(rows, header, dateColsRaw, year) {
     const { colMap, dataStartIdx } = header;
+    // 跨年處理：日期欄依表頭由左到右排列，月份比前一欄小（例如 12/30 之後接 01/06）
+    // 代表已經跨到隔年，年份自動 +1。使用者填的年份＝第一堂所在的年份。
+    let curYear = year, prevMonth = 0;
     const dateCols = dateColsRaw.map(({ colIndex, mmdd }) => {
+      const [mNum] = mmdd.split('/').map(Number);
+      if (prevMonth && mNum < prevMonth) curYear += 1;
+      prevMonth = mNum;
       const [mm, dd] = mmdd.split('/').map(n => String(n).padStart(2, '0'));
-      return { colIndex, dateStr: `${year}-${mm}-${dd}` };
+      return { colIndex, dateStr: `${curYear}-${mm}-${dd}` };
     });
 
     const dataRows = rows.slice(dataStartIdx);
@@ -192,7 +198,7 @@
 
       <!-- Step 2: 學期年份（僅有日期欄時使用） -->
       <div class="buke-card" style="margin-bottom:14px">
-        <div style="font-weight:500;margin-bottom:10px">② 學期年份（官方表頭只有 MM/DD，若檔案含出缺勤日期欄需補西元年；純名冊檔案可略過）</div>
+        <div style="font-weight:500;margin-bottom:10px">② 學期年份（官方表頭只有 月/日，若檔案含出缺勤日期欄，請填「第一堂」所在的西元年；學期跨年時，1 月之後的日期會自動算成隔年；純名冊檔案可略過）</div>
         <input id="imp-year" type="number" value="${thisYear}" min="2000" max="2099"
                style="width:100px;font-size:15px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-sm)">
       </div>
@@ -393,12 +399,14 @@
           <span style="margin-right:18px">👤 ${members.length} 位學員</span>
           <span style="margin-right:18px">📅 ${heldDates.length} 個已上課次</span>
           <span style="margin-right:18px">🗓️ ${futureCount} 堂未來堂次</span>
-          ${cancelledDates.length ? `<span style="margin-right:18px">🌀 ${cancelledDates.length} 天停課／颱風假</span>` : ''}
+          ${cancelledDates.length ? `<span style="margin-right:18px">🌀 ${cancelledDates.length} 天停課／颱風假／放香（不計入堂次）</span>` : ''}
           <span>📝 ${attendCount} 筆出缺勤</span>
         </div>
         <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+          ${(() => { const real = allDates.filter(d => !cancelledDates.includes(d) || heldDates.includes(d));
+              return real.length ? `學期日期：${real[0]} ～ ${real[real.length - 1]}（共 ${real.length} 堂，請確認年份正確）<br>` : ''; })()}
           已上課次：${heldDates.join('、') || '（無）'}
-          ${cancelledDates.length ? `<br>停課／颱風假（不建出缺勤）：${cancelledDates.join('、')}` : ''}
+          ${cancelledDates.length ? `<br>停課／颱風假／放香（F，不建堂次、不建出缺勤）：${cancelledDates.join('、')}` : ''}
         </div>` : ''}
 
         <div style="overflow-x:auto">
@@ -593,7 +601,9 @@
         const heldSet = new Set(heldDates);
         // 3. upsert sessions（依「本期全部日期欄」建立，含尚未發生、還沒有出缺勤資料的未來堂次；
         //    week_num 依全部日期欄順序編號，不是只算有資料的，避免之後補資料進來時 week_num 跳號）
-        const sessionRows = allDates.map((date, idx) => ({
+        //    停課／颱風假／放香（整天全班寫 F、且沒有任何人實際出席）不建堂次，也不占「第幾堂」的號碼。
+        const sessionDates = allDates.filter(d => !cancelledDates.includes(d) || heldSet.has(d));
+        const sessionRows = sessionDates.map((date, idx) => ({
           class_ref: classRef,
           date,
           is_held:   heldSet.has(date),
