@@ -291,15 +291,15 @@
       if (error || !data) return;
       const { last_run_at, ok_count, fail_count } = data;
       if (!last_run_at) {
-        chip.textContent = '尚無同步紀錄';
+        chip.textContent = '尚無自動排程同步紀錄';
         chip.style.background = '#fdecea';
         chip.style.color = '#611a15';
       } else if (fail_count > 0) {
-        chip.textContent = `同步：${formatSyncRelative(last_run_at)}（${ok_count} OK／${fail_count} 失敗）`;
+        chip.textContent = `自動排程同步：${formatSyncRelative(last_run_at)}（${ok_count} OK／${fail_count} 失敗）`;
         chip.style.background = '#fff3cd';
         chip.style.color = '#7a5b00';
       } else {
-        chip.textContent = `同步：${formatSyncRelative(last_run_at)}（${ok_count} 班 OK）`;
+        chip.textContent = `自動排程同步：${formatSyncRelative(last_run_at)}（${ok_count} 班 OK）`;
         chip.style.background = '';
         chip.style.color = '';
       }
