@@ -6,6 +6,7 @@
 
 (function () {
   let _sb;
+  let _closedRefs = new Set(); // 已結業封存的班別編號（字串）；這些班的逾期補課登記不再顯示
   const TODAY = new Date().toLocaleDateString('sv-SE');
   const LATE_SELECT = 'id,member_ref,session_ref,earphone,note,status,registered_by,planned_date,planned_slot,deadline_date,completed_date,ctis_synced,is_late_exception,' +
     'members!member_ref(name,group_id,class_ref,classes(class_name)),' +
@@ -107,8 +108,8 @@
     formEl.querySelector('.btn-lookup').addEventListener('click', async () => {
       const name = formEl.querySelector('.f-name').value.trim();
       if (!name) return;
-      const { data } = await _sb.from('members').select('id,class_ref,classes(class_name)').ilike('name', name).eq('status', '在學');
-      _members = data || [];
+      const { data } = await _sb.from('members').select('id,class_ref,classes(class_name,status)').ilike('name', name).eq('status', '在學');
+      _members = (data || []).filter(m => m.classes?.status !== '已結業'); // 已結業封存的班不列入選單
       const clsSel = formEl.querySelector('.f-class');
       clsSel.innerHTML = '<option value="">請選擇班別</option>' +
         _members.map((m, i) => `<option value="${i}">${m.classes?.class_name || '—'}</option>`).join('');
@@ -183,11 +184,24 @@
     }));
   }
 
+  /** 已結業封存的班，紀錄不顯示 */
+  function _hideClosed(rows) {
+    return rows.filter(r => !_closedRefs.has(String(r._class_ref)));
+  }
+
   /** 「待補課」永遠全撈；「已完成」只預設抓近 14 天，更早的收進「顯示更早資料」 */
   async function _fetchLateBase() {
     const cutoff = window.PanelMakeupOverview.recentCutoffISO();
     _lateCutoff = cutoff; // loadOlderLate 要用同一個切點，避免時間經過後兩段查詢對不上
     const base = () => _sb.from('makeups').select(LATE_SELECT).eq('is_late_exception', true);
+
+    // 先取得已結業封存的班：這些班的紀錄不顯示，「更早資料」筆數也要排除。
+    // 查不到就當作沒有已結業班（退回原本行為），不影響清單載入。
+    {
+      const { data: closedCls, error: closedErr } = await _sb.from('classes').select('id').eq('status', '已結業');
+      if (closedErr) console.warn('查已結業班別失敗，逾期補課清單不排除舊班：', closedErr.message);
+      _closedRefs = new Set((closedCls || []).map(c => String(c.id)));
+    }
 
     const [{ data: pendingData, error: pendErr }, { data: doneData, error: doneErr }] = await Promise.all([
       base().eq('status', '待補課').order('created_at', { ascending: false }),
@@ -196,14 +210,28 @@
     if (pendErr) throw new Error(pendErr.message);
     if (doneErr) throw new Error(doneErr.message);
 
-    const { count, error: cntErr } = await _sb.from('makeups')
-      .select('id', { count: 'exact', head: true })
-      .eq('is_late_exception', true).eq('status', '已完成').lt('created_at', cutoff);
-    if (cntErr) throw new Error(cntErr.message);
-    _lateOlderCount  = count || 0;
+    // 「顯示更早資料 N 筆」排除已結業班；排除用查詢若失敗，退回不排除的總筆數
+    let count = 0;
+    {
+      const closedIds = [..._closedRefs];
+      let q = _sb.from('makeups')
+        .select('id,members!member_ref!inner(class_ref)', { count: 'exact', head: true })
+        .eq('is_late_exception', true).eq('status', '已完成').lt('created_at', cutoff);
+      if (closedIds.length) q = q.not('members.class_ref', 'in', `(${closedIds.join(',')})`);
+      let res = await q;
+      if (res.error) {
+        console.warn('更早資料筆數（排除已結業班）查詢失敗，改用總筆數：', res.error.message);
+        res = await _sb.from('makeups')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_late_exception', true).eq('status', '已完成').lt('created_at', cutoff);
+        if (res.error) throw new Error(res.error.message);
+      }
+      count = res.count || 0;
+    }
+    _lateOlderCount  = count;
     _lateOlderLoaded = false;
 
-    _lateRows = await _attachLateAttendance([...(pendingData || []), ...(doneData || [])]);
+    _lateRows = _hideClosed(await _attachLateAttendance([...(pendingData || []), ...(doneData || [])]));
   }
 
   /** 點「顯示更早資料」才撈：已完成、created_at 早於 cutoff 的全部（分批 .range()） */
@@ -214,7 +242,7 @@
         .eq('status', '已完成').lt('created_at', cutoff)
         .order('created_at', { ascending: false })
         .range(from, to));
-    _lateRows = [..._lateRows, ...await _attachLateAttendance(older)];
+    _lateRows = [..._lateRows, ..._hideClosed(await _attachLateAttendance(older))];
     _lateOlderLoaded = true;
   }
 

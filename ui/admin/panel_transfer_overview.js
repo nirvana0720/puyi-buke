@@ -8,15 +8,20 @@
   let _trOlderLoaded = false, _trOlderCount = 0, _trCutoff = null;
 
   const TRANSFER_SELECT = 'id,to_date,status,attended_at,late_mark,registered_by,note,ctis_updated,' +
-    'members!member_ref(name,group_id,classes(class_name)),' +
+    'members!member_ref(name,group_id,class_ref,classes(class_name,status)),' +
     'sessions!from_session_ref(date),' +
     'classes!to_class_ref(class_name)';
   const DONE_STATUSES = ['已出席', '未到'];
 
   // ── 資料讀取 ────────────────────────────────────────────────
 
+  /** 已結業封存的班（以學員所屬班的狀態判斷），紀錄不顯示 */
+  function _hideClosed(rows) {
+    return rows.filter(r => r.members?.classes?.status !== '已結業');
+  }
+
   function _mapTransferRows(rows) {
-    return rows.map(r => ({
+    return _hideClosed(rows).map(r => ({
       ...r,
       _name:       r.members?.name                || '—',
       _group:      r.members?.group_id            || '',
@@ -40,11 +45,28 @@
     if (pendErr) throw new Error(`日夜補：${pendErr.message}`);
     if (doneErr) throw new Error(`日夜補：${doneErr.message}`);
 
-    const { count, error: cntErr } = await _sb.from('transfers')
-      .select('id', { count: 'exact', head: true })
-      .in('status', DONE_STATUSES).lt('created_at', cutoff);
-    if (cntErr) throw new Error(`日夜補：${cntErr.message}`);
-    _trOlderCount  = count || 0;
+    // 「顯示更早資料 N 筆」排除已結業封存班的紀錄（清單不顯示它們，筆數要一致）；
+    // 排除用的查詢若失敗，退回不排除的總筆數，不影響其他功能
+    let count = 0;
+    {
+      const { data: closedCls, error: closedErr } = await _sb.from('classes').select('id').eq('status', '已結業');
+      if (closedErr) console.warn('查已結業班別失敗，更早資料筆數不排除舊班：', closedErr.message);
+      const closedIds = (closedCls || []).map(c => c.id);
+      let q = _sb.from('transfers')
+        .select('id,members!member_ref!inner(class_ref)', { count: 'exact', head: true })
+        .in('status', DONE_STATUSES).lt('created_at', cutoff);
+      if (closedIds.length) q = q.not('members.class_ref', 'in', `(${closedIds.join(',')})`);
+      let res = await q;
+      if (res.error) {
+        console.warn('更早資料筆數（排除已結業班）查詢失敗，改用總筆數：', res.error.message);
+        res = await _sb.from('transfers')
+          .select('id', { count: 'exact', head: true })
+          .in('status', DONE_STATUSES).lt('created_at', cutoff);
+        if (res.error) throw new Error(`日夜補：${res.error.message}`);
+      }
+      count = res.count || 0;
+    }
+    _trOlderCount  = count;
     _trOlderLoaded = false;
 
     _transfers = _mapTransferRows([...(pendingData || []), ...(doneData || [])]);
@@ -375,9 +397,9 @@
       _trMember = null;
       if (!name) return;
       const { data: mems } = await _sb.from('members')
-        .select('id,class_ref,classes(class_name,level)')
+        .select('id,class_ref,classes(class_name,level,status)')
         .ilike('name', name).eq('status', '在學');
-      _trMembers = mems || [];
+      _trMembers = (mems || []).filter(m => m.classes?.status !== '已結業'); // 已結業封存的班不列入選單
       if (!_trMembers.length) { msgEl.textContent = '找不到此在學學員'; return; }
       if (_trMembers.length === 1) {
         _trMember = _trMembers[0];

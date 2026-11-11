@@ -10,6 +10,7 @@
   const RECENT_DAYS = 14;
   const RANGE_PAGE_SIZE = 1000;
   let _muOlderLoaded = false, _muOlderCount = 0, _muCutoff = null;
+  let _closedRefs = new Set(); // 已結業封存的班別編號（字串）；這些班的補課登記不再顯示在清單裡
   let _classOptions = []; // [{ class_ref, class_name }]，供班別下拉選單／清空功能找 classRef 用；
                            // 查 classes 表全部班名，不能只從 _makeups 取——_makeups 現在只保留
                            // 「待補課」全部＋「已完成」近 14 天，只有舊資料的班會從 _makeups 消失，
@@ -115,11 +116,26 @@
     if (pendErr) throw new Error(`補課：${pendErr.message}`);
     if (doneErr) throw new Error(`補課：${doneErr.message}`);
 
-    const { count, error: cntErr } = await _sb.from('makeups')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', '已完成').lt('created_at', cutoff);
-    if (cntErr) throw new Error(`補課：${cntErr.message}`);
-    _muOlderCount  = count || 0;
+    // 「顯示更早資料 N 筆」的 N：排除已結業封存班的紀錄（這些紀錄清單不顯示，筆數要跟實際看到的一致）。
+    // 排除用的查詢若失敗，退回不排除的總筆數，不影響面板其他功能。
+    let count = 0;
+    {
+      const closedIds = [..._closedRefs];
+      let q = _sb.from('makeups')
+        .select('id,members!member_ref!inner(class_ref)', { count: 'exact', head: true })
+        .eq('status', '已完成').lt('created_at', cutoff);
+      if (closedIds.length) q = q.not('members.class_ref', 'in', `(${closedIds.join(',')})`);
+      let res = await q;
+      if (res.error) {
+        console.warn('更早資料筆數（排除已結業班）查詢失敗，改用總筆數：', res.error.message);
+        res = await _sb.from('makeups')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', '已完成').lt('created_at', cutoff);
+        if (res.error) throw new Error(`補課：${res.error.message}`);
+      }
+      count = res.count || 0;
+    }
+    _muOlderCount  = count;
     _muOlderLoaded = false;
 
     _makeups = await _attachAttendance([...(pendingData || []), ...(doneData || [])]);
@@ -143,36 +159,12 @@
   async function fetchClassOptions() {
     const { data, error } = await _sb.from('classes').select('id,class_name,status').order('class_name');
     if (error) throw new Error(`班別清單：${error.message}`);
-    const all = data || [];
-
-    // 已結業封存的班：只有「還有補課/調課資料」才列進選單（讓管理員能清空），
-    // 資料一清空就自動從選單消失，選單不會隨著期數越積越長。
-    // 判斷標準跟清空功能一致：補課看 session_ref 所屬班、調課看來源堂次 from_session_ref 所屬班。
-    const closedIds = all.filter(c => c.status === '已結業').map(c => c.id);
-    const hasData = new Set();
-    let checkFailed = false; // 查「有沒有資料」失敗時，退回舊行為（已結業班全列），不讓整個面板壞掉
-    if (closedIds.length) {
-      try {
-      const [muRows, trRows] = await Promise.all([
-        fetchAllByRange((from, to) => _sb.from('makeups')
-          .select('id,sessions!session_ref!inner(class_ref)')
-          .in('sessions.class_ref', closedIds).order('id').range(from, to)),
-        fetchAllByRange((from, to) => _sb.from('transfers')
-          .select('id,sessions!from_session_ref!inner(class_ref)')
-          .in('sessions.class_ref', closedIds).order('id').range(from, to)),
-      ]);
-      [...muRows, ...trRows].forEach(r => { if (r.sessions?.class_ref != null) hasData.add(String(r.sessions.class_ref)); });
-      } catch (e) {
-        checkFailed = true;
-        console.warn('判斷已結業班是否還有補課/調課資料失敗，改為列出全部已結業班：', e.message);
-      }
-    }
-
-    _classOptions = all
-      .filter(c => c.status !== '已結業' || checkFailed || hasData.has(String(c.id)))
-      .map(c => ({ class_ref: String(c.id), class_name: c.class_name, status: c.status }))
-      // 進行中／準備中的班在前，已結業（還有資料）的排後面
-      .sort((a, b) => (a.status === '已結業') - (b.status === '已結業') || a.class_name.localeCompare(b.class_name, 'zh-Hant'));
+    // 已結業封存的班不列入選單：一按「結業封存」，這個班就自動從選單消失，選單不會隨期數越積越長。
+    // 選班別用班別編號（字串），不同期的班同名也不會混在一起。
+    _closedRefs = new Set((data || []).filter(c => c.status === '已結業').map(c => String(c.id)));
+    _classOptions = (data || [])
+      .filter(c => c.status !== '已結業')
+      .map(c => ({ class_ref: String(c.id), class_name: c.class_name, status: c.status }));
   }
 
   /** _filterClass 存的是班別編號（字串），不再用班名——不同期的班可能同名 */
@@ -194,7 +186,8 @@
     _sb = sb;
     container.innerHTML = '<p class="buke-empty">載入中…</p>';
     try {
-      await Promise.all([fetchMakeups(), fetchClassOptions()]);
+      await fetchClassOptions(); // 先取得已結業班清單，補課「更早資料」筆數才能排除它們
+      await fetchMakeups();
       renderShell(container);
       applyAndRender(container);
     } catch (e) {
@@ -254,7 +247,8 @@
     container.querySelector('#mo-status').addEventListener('change', e => { _filterStatus = e.target.value; applyAndRender(container); });
     container.querySelector('#mo-refresh').addEventListener('click', async () => {
       container.querySelector('#mo-list').innerHTML = '<p class="buke-empty">載入中…</p>';
-      await Promise.all([fetchMakeups(), fetchClassOptions()]);
+      await fetchClassOptions(); // 先取得已結業班清單，補課「更早資料」筆數才能排除它們
+      await fetchMakeups();
       _renderClassOptions(container);
       _updateWipeBtn(container);
       applyAndRender(container);
@@ -276,6 +270,12 @@
     const btn = container.querySelector('#mo-wipe-class');
     const hint = container.querySelector('#mo-wipe-hint');
     if (!btn) return;
+    // 清空功能只允許對「已結業」的班操作，但已結業的班已不在選單中，按鈕無從點起，一律隱藏
+    // （相關程式碼保留，日後若要恢復「顯示已結業班別」選項可直接沿用）
+    btn.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!_filterClass) {
       btn.style.display = 'none';
       if (hint) hint.style.display = 'none';
@@ -375,7 +375,8 @@
       }
 
       _filterClass = '';
-      await Promise.all([fetchMakeups(), fetchClassOptions()]);
+      await fetchClassOptions(); // 先取得已結業班清單，補課「更早資料」筆數才能排除它們
+      await fetchMakeups();
       renderShell(container);
       applyAndRender(container);
       const countEl = container.querySelector('#mo-count');
@@ -396,6 +397,7 @@
 
     const urgent = _makeups
       .filter(r => r.status === '待補課')
+      .filter(r => !_closedRefs.has(String(r._class_ref)))
       .filter(r => !_filterClass || String(r._class_ref) === _filterClass)
       .map(r => {
         const dl = r.deadline_date ? new Date(r.deadline_date) : null;
@@ -451,6 +453,7 @@
     renderUrgentSummary(container);
 
     let muFiltered = _makeups.filter(r => {
+      if (_closedRefs.has(String(r._class_ref))) return false; // 已結業封存的班不再顯示
       if (_filterClass && String(r._class_ref) !== _filterClass) return false;
       if (_filterStatus === 'pending') return r.status === '待補課' && !r._overdue;
       if (_filterStatus === 'done')    return r.status === '已完成';
