@@ -823,8 +823,8 @@
   // 情境：日夜補、補課在系統裡已完成（出缺勤被寫成 V/L/ML/M、來源「人工登打」），但山上 CTIS 還沒更新，
   // 重新匯入的 Excel 上那一格是缺課（O）——這時保留系統裡的標記，不蓋成缺課。
   // 只保護「資料庫現況是人工登打的 V/L/ML/M，而且 Excel 要寫成 O」這一種；其他情況照 Excel 寫入，行為不變。
-  // （保護的標記集合與刷卡自動同步的保護規則一致：V／L／ML／M）
-  const IMPORT_PROTECT_MARKS = ['V', 'L', 'ML', 'M'];
+  // （保護的標記集合與刷卡自動同步的保護規則一致：V／L／ML／M／D（日補）／N（夜補））
+  const IMPORT_PROTECT_MARKS = ['V', 'L', 'ML', 'M', 'D', 'N'];
 
   async function filterProtectedAttendance(sb, attendRows, sessionIds) {
     const protectedKeys = new Set();

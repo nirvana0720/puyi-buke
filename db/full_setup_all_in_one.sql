@@ -2170,9 +2170,11 @@ DECLARE
   v_member_ref       bigint;
   v_from_session_ref bigint;
   v_mark              text;
+  v_to_dn             text;   -- 調去班別是日班或夜班（決定寫日補 D 或夜補 N）
 BEGIN
-  SELECT member_ref, from_session_ref INTO v_member_ref, v_from_session_ref
-    FROM transfers WHERE id = p_transfer_id;
+  SELECT t.member_ref, t.from_session_ref, c.day_night INTO v_member_ref, v_from_session_ref, v_to_dn
+    FROM transfers t LEFT JOIN classes c ON c.id = t.to_class_ref
+   WHERE t.id = p_transfer_id;
 
   IF v_member_ref IS NULL THEN
     RAISE EXCEPTION '找不到日夜補登記（id=%）', p_transfer_id;
@@ -2182,7 +2184,10 @@ BEGIN
      SET status = '已出席', attended_at = now(), late_mark = p_late_mark
    WHERE id = p_transfer_id;
 
-  v_mark := CASE WHEN p_late_mark = '準時' THEN 'V' ELSE p_late_mark END;
+  -- 準時 → 調去日班寫日補 D、調去夜班寫夜補 N（官方正式寫法）；遲到（L/LL/A）直接對應；班別日夜資料缺時才退回 V
+  v_mark := CASE WHEN p_late_mark IS NULL OR p_late_mark = '準時'
+                 THEN CASE v_to_dn WHEN '日' THEN 'D' WHEN '夜' THEN 'N' ELSE 'V' END
+                 ELSE p_late_mark END;
 
   INSERT INTO attendance (member_ref, session_ref, mark, source)
   VALUES (v_member_ref, v_from_session_ref, v_mark, 'manual')
@@ -2558,7 +2563,7 @@ DECLARE
   v_synced      int := 0;
   v_inserted    boolean := false;  -- 這位學員是不是這次才新增（中途加入）
   r             jsonb;
-  PROTECTED     text[] := ARRAY['V','L','ML','M'];
+  PROTECTED     text[] := ARRAY['V','L','ML','M','D','N'];
 BEGIN
   INSERT INTO classes (unit_id, class_id, class_name, level, day_night,
                        day_of_week, start_time, end_time, period_num)
@@ -3161,12 +3166,13 @@ DECLARE
   v_diff       numeric;
   v_late_mark  text;
   v_mark       text;
+  v_to_dn      text;   -- 調去班別是日班或夜班（決定寫日補 D 或夜補 N）
 BEGIN
   PERFORM _kiosk_verify_staff(p_staff_id);
 
   -- 取調班學員／原堂次、調班目標日期與目標班別上課時間
-  SELECT t.member_ref, t.from_session_ref, t.to_date, c.start_time
-    INTO v_member_ref, v_from_session_ref, v_to_date, v_start_time
+  SELECT t.member_ref, t.from_session_ref, t.to_date, c.start_time, c.day_night
+    INTO v_member_ref, v_from_session_ref, v_to_date, v_start_time, v_to_dn
     FROM transfers t
     JOIN classes c ON c.id = t.to_class_ref
    WHERE t.id = p_transfer_id;
@@ -3201,10 +3207,13 @@ BEGIN
     RAISE EXCEPTION '找不到可出席的調班（id=%）', p_transfer_id;
   END IF;
 
-  -- 同步寫回原班原堂次出席紀錄（依自動判定的遲到狀態同步，準時→V，L/LL/A 直接對應；
-  -- 判定不出來（日期時間缺）時比照舊行為預設 V，避免此分支反而卡住整支流程）
+  -- 同步寫回原班原堂次出席紀錄（依自動判定的遲到狀態同步，L/LL/A 直接對應；
+  -- 準時（或判定不出來）→ 調去日班寫日補 D、調去夜班寫夜補 N（官方正式寫法）；
+  -- 班別日夜資料缺時才退回 V，避免此分支反而卡住整支流程）
   IF v_member_ref IS NOT NULL AND v_from_session_ref IS NOT NULL THEN
-    v_mark := CASE WHEN v_late_mark IS NULL OR v_late_mark = '準時' THEN 'V' ELSE v_late_mark END;
+    v_mark := CASE WHEN v_late_mark IS NULL OR v_late_mark = '準時'
+                   THEN CASE v_to_dn WHEN '日' THEN 'D' WHEN '夜' THEN 'N' ELSE 'V' END
+                   ELSE v_late_mark END;
 
     INSERT INTO attendance (member_ref, session_ref, mark, source)
     VALUES (v_member_ref, v_from_session_ref, v_mark, 'manual')
