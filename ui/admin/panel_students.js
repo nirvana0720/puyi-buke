@@ -8,6 +8,7 @@
   let _allRows  = [];
   let _filterClass = null;
   let _filterGroup = '';
+  const PENDING_GROUP = '__PENDING_GENDER__'; // 組別篩選的特殊值：只看「組別只有數字、待補性別」的人
   let _searchName  = '';
   let _sortKey     = 'short';   // 'short' | 'pending'
   let _scheduleMap = new Map(); // class_ref → {day_of_week, day_night}（供班別下拉依星期排序）
@@ -80,6 +81,7 @@
           匯出 CSV
         </button>
       </div>
+      <div id="st-pending-banner"></div>
       <div id="st-count" style="font-size:14px;color:var(--muted);margin-bottom:10px"></div>
       <div id="st-table"></div>`;
 
@@ -115,14 +117,18 @@
       .sort(window.AdminData?.compareGroupNames);
     const sel = container.querySelector('#st-sel-group');
     if (!sel) return;
+    const pendingN = base.filter(r => isPlainGroup(r.group_id)).length;
+    // 組別是純數字的（待補性別）不再各自列成「1」「2」，合併成最上面一個「待補性別」選項
+    const realGroups = groups.filter(g => !isPlainGroup(g));
     sel.innerHTML = '<option value="">全部組別</option>'
-      + groups.map(g => `<option value="${g}"${_filterGroup === g ? ' selected' : ''}>${g}</option>`).join('');
+      + (pendingN ? `<option value="${PENDING_GROUP}"${_filterGroup === PENDING_GROUP ? ' selected' : ''}>⚠ 待補性別（共 ${pendingN} 人）</option>` : '')
+      + realGroups.map(g => `<option value="${g}"${_filterGroup === g ? ' selected' : ''}>${g}</option>`).join('');
   }
 
   function filtered() {
     return _allRows.filter(r =>
       (!_filterClass || r.class_ref === _filterClass) &&
-      (!_filterGroup || r.group_id  === _filterGroup) &&
+      (!_filterGroup || (_filterGroup === PENDING_GROUP ? isPlainGroup(r.group_id) : r.group_id === _filterGroup)) &&
       (!_searchName  || r.name.toLowerCase().includes(_searchName))
     );
   }
@@ -142,7 +148,34 @@
     });
   }
 
+  /** 表格上方的黃色提醒：目前篩選的班別裡，還有幾位組別沒有性別 */
+  function renderPendingBanner(container) {
+    const box = container.querySelector('#st-pending-banner');
+    if (!box) return;
+    const base = _filterClass ? _allRows.filter(r => r.class_ref === _filterClass) : _allRows;
+    const n = base.filter(r => isPlainGroup(r.group_id)).length;
+    if (!n) { box.innerHTML = ''; return; }
+    const viewing = _filterGroup === PENDING_GROUP;
+    box.innerHTML = `<div style="background:#fff3cd;color:#7a5b00;border-radius:8px;padding:10px 14px;margin-bottom:10px;
+        display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px">
+        <span>⚠ ${_filterClass ? '這個班' : '目前'}還有 <strong>${n}</strong> 位學員的組別沒有性別（只顯示數字），請在該學員的組別下方按「補男」或「補女」。</span>
+        <button id="btn-pending-toggle" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 12px;min-height:30px">${viewing ? '看全部學員' : '只看這些人'}</button>
+      </div>`;
+    box.querySelector('#btn-pending-toggle').addEventListener('click', () => {
+      _filterGroup = viewing ? '' : PENDING_GROUP;
+      refreshGroupOpts(container);
+      applyAndRender(container);
+    });
+  }
+
   function applyAndRender(container) {
+    // 補完最後一位後，「待補性別」篩選已沒有人，自動回到全部組別
+    if (_filterGroup === PENDING_GROUP) {
+      const base = _filterClass ? _allRows.filter(r => r.class_ref === _filterClass) : _allRows;
+      if (!base.some(r => isPlainGroup(r.group_id))) _filterGroup = '';
+    }
+    refreshGroupOpts(container);
+    renderPendingBanner(container);
     const rows  = sorted(filtered());
     const count = container.querySelector('#st-count');
     const table = container.querySelector('#st-table');
