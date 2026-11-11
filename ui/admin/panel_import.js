@@ -636,6 +636,7 @@
 
       let attendRowsLen = 0;
       let staleMsg = '';
+      let preservedMsg = '';
       if (hasDateCols) {
         const heldSet = new Set(heldDates);
         // 3. upsert sessions（依「本期全部日期欄」建立，含尚未發生、還沒有出缺勤資料的未來堂次；
@@ -711,13 +712,23 @@
             `${badMarks.length > 15 ? `…（還有 ${badMarks.length - 15} 筆）` : ''}`
           );
         }
-        attendRowsLen = attendRows.length;
+        // 5b. 保護系統裡人工確認的出席類標記：Excel 上是缺課、但系統裡已是人工登打的 V/L/ML/M，不蓋掉
+        progEl.textContent = '檢查人工確認的出缺勤…';
+        const { rows: writeRows, preserved } = await filterProtectedAttendance(sb, attendRows, Object.values(sessionIdMap));
+        if (preserved.length) {
+          const nameByRef = {};
+          members.forEach(m => { if (memberIdMap[m.member_id]) nameByRef[memberIdMap[m.member_id]] = m.name; });
+          const dateById = Object.fromEntries(Object.entries(sessionIdMap).map(([d, id]) => [id, d]));
+          const items = preserved.slice(0, 15).map(r => `${nameByRef[r.member_ref] || '—'}（${(dateById[r.session_ref] || '').slice(5)}）`);
+          preservedMsg = `<br>🛡 有 ${preserved.length} 筆系統裡已人工確認為出席／補課的紀錄，因為 Excel 上是缺課，沒有被覆蓋：${items.join('、')}${preserved.length > 15 ? `…（還有 ${preserved.length - 15} 筆）` : ''}。這些多半是還沒更新到山上 CTIS，請確認。`;
+        }
+        attendRowsLen = writeRows.length;
 
-        for (let i = 0; i < attendRows.length; i += BATCH) {
-          progEl.textContent = `匯入出缺勤… ${Math.min(i + BATCH, attendRows.length)} / ${attendRows.length}`;
+        for (let i = 0; i < writeRows.length; i += BATCH) {
+          progEl.textContent = `匯入出缺勤… ${Math.min(i + BATCH, writeRows.length)} / ${writeRows.length}`;
           const { error } = await sb
             .from('attendance')
-            .upsert(attendRows.slice(i, i + BATCH), { onConflict: 'member_ref,session_ref' });
+            .upsert(writeRows.slice(i, i + BATCH), { onConflict: 'member_ref,session_ref' });
           if (error) throw new Error(`attendance upsert 失敗：${error.message}`);
         }
       }
@@ -728,7 +739,7 @@
       const cancelledMsg = cancelledDates.length ? `、${cancelledDates.length} 天停課／颱風假（未建出缺勤）` : '';
       resultEl.innerHTML = hasDateCols
         ? `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
-             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${cancelledMsg}${roleMsg}。${staleMsg}
+             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${cancelledMsg}${roleMsg}。${staleMsg}${preservedMsg}
            </div>`
         : `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
              ✅ 已匯入 ${members.length} 位學員${roleMsg}。
@@ -806,6 +817,36 @@
       result.warn = e.message;
     }
     return result;
+  }
+
+  // ── 匯入出缺勤時，保護系統裡「人工確認的出席類標記」不被 Excel 的缺課蓋掉 ─────────
+  // 情境：日夜補、補課在系統裡已完成（出缺勤被寫成 V/L/ML/M、來源「人工登打」），但山上 CTIS 還沒更新，
+  // 重新匯入的 Excel 上那一格是缺課（O）——這時保留系統裡的標記，不蓋成缺課。
+  // 只保護「資料庫現況是人工登打的 V/L/ML/M，而且 Excel 要寫成 O」這一種；其他情況照 Excel 寫入，行為不變。
+  // （保護的標記集合與刷卡自動同步的保護規則一致：V／L／ML／M）
+  const IMPORT_PROTECT_MARKS = ['V', 'L', 'ML', 'M'];
+
+  async function filterProtectedAttendance(sb, attendRows, sessionIds) {
+    const protectedKeys = new Set();
+    const PAGE = 1000;
+    for (let i = 0; i < sessionIds.length; i += 50) {          // 分批查，避免一次帶太多條件
+      const ids = sessionIds.slice(i, i + 50);
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await sb.from('attendance')
+          .select('member_ref,session_ref')
+          .eq('source', 'manual').in('mark', IMPORT_PROTECT_MARKS).in('session_ref', ids)
+          .order('id').range(from, from + PAGE - 1);
+        if (error) throw new Error(`檢查人工確認的出缺勤失敗：${error.message}`);
+        (data || []).forEach(r => protectedKeys.add(`${r.member_ref}|${r.session_ref}`));
+        if ((data || []).length < PAGE) break;
+      }
+    }
+    const rows = [], preserved = [];
+    for (const r of attendRows) {
+      if (r.mark === 'O' && protectedKeys.has(`${r.member_ref}|${r.session_ref}`)) preserved.push(r);
+      else rows.push(r);
+    }
+    return { rows, preserved };
   }
 
   /** 把整理結果轉成顯示在匯入結果裡的文字（沒事就回傳空字串） */

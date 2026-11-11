@@ -15,7 +15,7 @@ const LEADER_ATTENDANCE_MARK_LABEL = {
   V: '出席', L: '遲到', M: '補課', ML: '靜坐補課', D: '日補', N: '夜補',
 };
 
-const SOURCE_LABEL = { manual: '人工登打', api: '刷卡同步' };
+const SOURCE_LABEL = { manual: '人工登打', api: '同步／匯入' };
 
 /**
  * 開啟「某學員出缺勤明細」唯讀彈窗（學長/班長看板點卡片姓名觸發）
