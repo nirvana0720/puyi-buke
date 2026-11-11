@@ -549,7 +549,7 @@ BEGIN
       IF (v_item->>'date')::date = p_planned_date THEN
         IF (v_item->>'start') IS NULL OR (v_item->>'end') IS NULL THEN
           RAISE EXCEPTION '此日期精舍不開放補課：%', COALESCE(v_item->>'reason', p_planned_date::text);
-        ELSIF p_planned_slot >= (v_item->>'start') AND p_planned_slot <= (v_item->>'end') THEN
+        ELSIF p_planned_slot >= (v_item->>'start') AND p_planned_slot <  (v_item->>'end') THEN
           RAISE EXCEPTION '此時段精舍不開放補課：%', COALESCE(v_item->>'reason', p_planned_date::text);
         END IF;
       END IF;

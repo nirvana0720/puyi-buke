@@ -55,26 +55,54 @@
 
   // ── 黑名單日期列表渲染 ───────────────────────────────────
 
+  /** 顯示用：把「連續日期、設定完全相同（原因＋時段都一樣）」的幾筆合併成一行，
+   *  例：2026-12-01～2026-12-31　12:00–14:00、18:00–20:00　僧眾七期間。
+   *  資料本身仍是一天一筆（後端檢查邏輯不變），只是畫面合併，刪除時一次刪掉那一行的全部日期。 */
   function renderBlackout(list, listEl) {
     listEl.innerHTML = '';
     if (!list.length) {
       listEl.innerHTML = '<p style="color:var(--muted);font-size:14px;margin:6px 0">尚未設定不開放補課日期。</p>';
       return;
     }
-    list.forEach((item, i) => {
+    // 依日期分組，並把同一天的時段排好
+    const byDate = new Map();
+    [...list].sort((a, b) => a.date.localeCompare(b.date) || (a.start || '').localeCompare(b.start || ''))
+      .forEach(it => { if (!byDate.has(it.date)) byDate.set(it.date, []); byDate.get(it.date).push(it); });
+
+    const sigOf = items => items.map(it => (it.start && it.end ? `${it.start}-${it.end}` : '整天')).join('|')
+                         + '#' + (items[0].reason || '');
+    const dayAfter = d => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); };
+
+    const groups = []; // { from, to, items(該行包含的所有原始筆), sig, label }
+    for (const [date, items] of byDate) {
+      const sig = sigOf(items);
+      const last = groups[groups.length - 1];
+      if (last && last.sig === sig && dayAfter(last.to) === date) {
+        last.to = date; last.items.push(...items);
+      } else {
+        groups.push({ from: date, to: date, items: [...items], sig, first: items });
+      }
+    }
+
+    groups.forEach(g => {
+      const range = g.from === g.to ? g.from : `${g.from}～${g.to}`;
+      const times = g.first.some(it => !it.start || !it.end)
+        ? '整天不開放'
+        : g.first.map(it => `${it.start}–${it.end}`).join('、');
+      const days = g.from === g.to ? '' : `（共 ${new Set(g.items.map(it => it.date)).size} 天）`;
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
-      const timeTxt = (item.start && item.end) ? ` ${item.start}–${item.end}` : '';
       row.innerHTML = `
         <span class="buke-badge" style="background:var(--warn-bg);color:var(--warn-tx);font-size:14px">
-          ${item.date}${timeTxt}　${item.reason || ''}
+          ${range}${days}　${times}　${g.first[0].reason || ''}
         </span>
         <button class="buke-btn buke-btn-danger" style="font-size:13px;padding:4px 10px;min-height:32px">
-          刪除
+          ${g.from === g.to ? '刪除' : '刪除這一批'}
         </button>`;
       row.querySelector('button').addEventListener('click', () => {
-        list.splice(i, 1);
+        g.items.forEach(it => { const k = list.indexOf(it); if (k >= 0) list.splice(k, 1); });
         renderBlackout(list, listEl);
+        listEl.dispatchEvent(new Event('change', { bubbles: true })); // 標記「尚未儲存」
       });
       listEl.appendChild(row);
     });
@@ -199,20 +227,28 @@
         <div id="blackout-list"></div>
 
         <details style="margin-top:10px">
-          <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增不開放補課日期</summary>
+          <summary style="cursor:pointer;font-size:14px;color:var(--header);font-weight:500">＋ 新增不開放補課日期（可一次設定一段日期、多個時段）</summary>
           <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px">
+              <span>日期</span>
               <input type="date" id="inp-blackout-date" class="buke-input" style="font-size:14px;min-height:36px">
-              <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：梁皇啟建）" style="font-size:14px;min-height:36px;flex:1;min-width:140px">
+              <span>～</span>
+              <input type="date" id="inp-blackout-date-end" class="buke-input" style="font-size:14px;min-height:36px">
+              <span style="color:var(--muted);font-size:13px">（只有一天的話，後面不用填）</span>
             </div>
+            <div id="blackout-weekdays-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px">
+              <span>套用星期</span>
+              ${['日','一','二','三','四','五','六'].map((w, k) => `<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" class="chk-blackout-wd" value="${k}" checked style="width:16px;height:16px">${w}</label>`).join('')}
+            </div>
+            <input type="text" id="inp-blackout-reason" class="buke-input" placeholder="原因（例：僧眾七期間，開放時間調整）" style="font-size:14px;min-height:36px;min-width:140px">
             <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
               <input type="checkbox" id="chk-blackout-allday" checked style="width:18px;height:18px">
               整天不開放
             </label>
-            <div id="blackout-time-row" style="display:none;align-items:center;gap:10px;flex-wrap:wrap">
-              <input type="time" id="inp-blackout-start" class="buke-input" style="font-size:14px;min-height:36px;width:110px">
-              <span style="color:var(--muted)">–</span>
-              <input type="time" id="inp-blackout-end" class="buke-input" style="font-size:14px;min-height:36px;width:110px">
+            <div id="blackout-time-row" style="display:none;flex-direction:column;gap:8px">
+              <div id="blackout-time-list" style="display:flex;flex-direction:column;gap:8px"></div>
+              <div><button type="button" id="btn-add-blackout-slot" class="buke-btn buke-btn-ghost" style="font-size:13px;padding:4px 12px;min-height:32px">＋ 再加一個時段</button></div>
+              <div style="font-size:12px;color:var(--muted)">時段不含結束時間：例如 12:00–14:00，表示 12:00～13:55 不開放，14:00 可以補課。</div>
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button id="btn-add-blackout" class="buke-btn" style="font-size:14px;padding:6px 14px;min-height:36px">加入</button>
@@ -238,46 +274,100 @@
     const blackoutListEl = container.querySelector('#blackout-list');
     renderBlackout(blackoutDates, blackoutListEl);
 
+    // 時段輸入列：可一次設定多個時段（每列一個起訖）
+    const timeListEl = container.querySelector('#blackout-time-list');
+    function addTimeRow() {
+      const r = document.createElement('div');
+      r.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+      r.innerHTML = `
+        <input type="time" class="buke-input inp-bo-start" style="font-size:14px;min-height:36px;width:120px">
+        <span style="color:var(--muted)">–</span>
+        <input type="time" class="buke-input inp-bo-end" style="font-size:14px;min-height:36px;width:120px">
+        <button type="button" class="buke-btn buke-btn-ghost btn-bo-del" style="font-size:12px;padding:2px 10px;min-height:28px">移除</button>`;
+      r.querySelector('.btn-bo-del').addEventListener('click', () => {
+        if (timeListEl.children.length > 1) r.remove();
+        else r.querySelectorAll('input').forEach(i => { i.value = ''; });
+      });
+      timeListEl.appendChild(r);
+    }
+    addTimeRow();
+    container.querySelector('#btn-add-blackout-slot').addEventListener('click', addTimeRow);
+
     container.querySelector('#chk-blackout-allday').addEventListener('change', e => {
       container.querySelector('#blackout-time-row').style.display = e.target.checked ? 'none' : 'flex';
     });
 
     container.querySelector('#btn-add-blackout').addEventListener('click', () => {
-      const date    = container.querySelector('#inp-blackout-date').value;
-      const reason  = container.querySelector('#inp-blackout-reason').value.trim();
-      const allDay  = container.querySelector('#chk-blackout-allday').checked;
-      const errEl   = container.querySelector('#blackout-err');
-      if (!date) { errEl.textContent = '請選擇日期'; return; }
+      const startDate = container.querySelector('#inp-blackout-date').value;
+      const endDate   = container.querySelector('#inp-blackout-date-end').value || startDate;
+      const reason    = container.querySelector('#inp-blackout-reason').value.trim();
+      const allDay    = container.querySelector('#chk-blackout-allday').checked;
+      const errEl     = container.querySelector('#blackout-err');
+      const fail = msg => { errEl.style.color = 'var(--danger-tx)'; errEl.textContent = msg; };
+      if (!startDate) { fail('請選擇日期'); return; }
+      if (endDate < startDate) { fail('結束日期不能早於開始日期'); return; }
 
-      // 同一天可以有多筆「只擋某時段」的設定，只擋：
-      // ①該天已有整天不開放（再新增都是多餘）②新增的整天不開放會蓋掉既有時段設定
-      // ③新時段跟同一天既有時段重疊
-      const sameDate = blackoutDates.filter(b => b.date === date);
-      const hasAllDay = sameDate.some(b => !b.start || !b.end);
-      if (hasAllDay) { errEl.textContent = '此日期已設定整天不開放，請勿重複新增'; return; }
+      // 展開日期範圍（只留勾選的星期）。用 UTC 計算，避免時區造成日期差一天
+      const wds = new Set([...container.querySelectorAll('.chk-blackout-wd:checked')].map(c => Number(c.value)));
+      if (!wds.size) { fail('請至少勾選一個星期'); return; }
+      const dates = [];
+      for (let t = new Date(startDate + 'T00:00:00Z'), endT = new Date(endDate + 'T00:00:00Z');
+           t <= endT; t.setUTCDate(t.getUTCDate() + 1)) {
+        if (dates.length >= 400) { fail('日期範圍太長（最多約一年），請分次設定'); return; }
+        if (wds.has(t.getUTCDay())) dates.push(t.toISOString().slice(0, 10));
+      }
+      if (!dates.length) { fail('這段日期裡沒有符合所選星期的日子'); return; }
 
-      if (allDay) {
-        if (sameDate.length) { errEl.textContent = '此日期已有時段設定，如需整天不開放請先刪除既有時段'; return; }
-        errEl.textContent = '';
-        blackoutDates.push({ date, reason: reason || null });
-      } else {
-        const start = container.querySelector('#inp-blackout-start').value;
-        const end   = container.querySelector('#inp-blackout-end').value;
-        if (!start || !end) { errEl.textContent = '請填入起訖時間'; return; }
-        if (start >= end)   { errEl.textContent = '開始時間須早於結束時間'; return; }
-        const overlap = sameDate.some(b => start < b.end && end > b.start);
-        if (overlap) { errEl.textContent = '此時段與同一天既有時段重疊，請勿重複新增'; return; }
-        errEl.textContent = '';
-        blackoutDates.push({ date, reason: reason || null, start, end });
+      // 取得要新增的時段
+      let newSlots = [null]; // null = 整天
+      if (!allDay) {
+        newSlots = [];
+        for (const r of timeListEl.children) {
+          const st = r.querySelector('.inp-bo-start').value;
+          const en = r.querySelector('.inp-bo-end').value;
+          if (!st && !en) continue; // 空白列略過
+          if (!st || !en) { fail('每個時段都要填起訖時間'); return; }
+          if (st >= en)   { fail(`時段 ${st}–${en}：開始時間須早於結束時間`); return; }
+          newSlots.push({ start: st, end: en });
+        }
+        if (!newSlots.length) { fail('請填入至少一個時段'); return; }
+        for (let x = 0; x < newSlots.length; x++) {
+          for (let y = x + 1; y < newSlots.length; y++) {
+            if (newSlots[x].start < newSlots[y].end && newSlots[x].end > newSlots[y].start) {
+              fail('你填的幾個時段彼此重疊，請修正'); return;
+            }
+          }
+        }
       }
 
+      // 加入：已有的設定一律不覆蓋、不重複，略過並計數
+      let added = 0, skipped = 0;
+      for (const date of dates) {
+        const same = blackoutDates.filter(b => b.date === date);
+        const hasAllDay = same.some(b => !b.start || !b.end);
+        for (const sl of newSlots) {
+          if (sl === null) {
+            if (same.length) { skipped++; continue; }
+            blackoutDates.push({ date, reason: reason || null }); added++;
+          } else {
+            if (hasAllDay || same.some(b => b.start && b.end && sl.start < b.end && sl.end > b.start)) { skipped++; continue; }
+            const entry = { date, reason: reason || null, start: sl.start, end: sl.end };
+            blackoutDates.push(entry); same.push(entry); added++;
+          }
+        }
+      }
+      blackoutDates.sort((a, b) => a.date.localeCompare(b.date) || (a.start || '').localeCompare(b.start || ''));
+
       renderBlackout(blackoutDates, blackoutListEl);
+      if (!added) { fail(`沒有新增：這些日期都已經有設定（略過 ${skipped} 筆）`); return; }
+      errEl.style.color = skipped ? 'var(--warn-tx)' : 'var(--ok-tx)';
+      errEl.textContent = `已加入 ${added} 筆${skipped ? `，另有 ${skipped} 筆因為與既有設定重複或重疊而略過` : ''}。請記得按最下面的「儲存設定」才會生效。`;
       container.querySelector('#inp-blackout-date').value = '';
+      container.querySelector('#inp-blackout-date-end').value = '';
       container.querySelector('#inp-blackout-reason').value = '';
-      container.querySelector('#inp-blackout-start').value = '';
-      container.querySelector('#inp-blackout-end').value = '';
       container.querySelector('#chk-blackout-allday').checked = true;
       container.querySelector('#blackout-time-row').style.display = 'none';
+      timeListEl.innerHTML = ''; addTimeRow();
     });
 
     // ── mode 單選 ↔ N 天輸入啟用 ────────────────────────
