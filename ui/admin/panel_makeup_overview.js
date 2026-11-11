@@ -143,7 +143,41 @@
   async function fetchClassOptions() {
     const { data, error } = await _sb.from('classes').select('id,class_name,status').order('class_name');
     if (error) throw new Error(`班別清單：${error.message}`);
-    _classOptions = (data || []).map(c => ({ class_ref: c.id, class_name: c.class_name, status: c.status }));
+    const all = data || [];
+
+    // 已結業封存的班：只有「還有補課/調課資料」才列進選單（讓管理員能清空），
+    // 資料一清空就自動從選單消失，選單不會隨著期數越積越長。
+    // 判斷標準跟清空功能一致：補課看 session_ref 所屬班、調課看來源堂次 from_session_ref 所屬班。
+    const closedIds = all.filter(c => c.status === '已結業').map(c => c.id);
+    const hasData = new Set();
+    let checkFailed = false; // 查「有沒有資料」失敗時，退回舊行為（已結業班全列），不讓整個面板壞掉
+    if (closedIds.length) {
+      try {
+      const [muRows, trRows] = await Promise.all([
+        fetchAllByRange((from, to) => _sb.from('makeups')
+          .select('id,sessions!session_ref!inner(class_ref)')
+          .in('sessions.class_ref', closedIds).order('id').range(from, to)),
+        fetchAllByRange((from, to) => _sb.from('transfers')
+          .select('id,sessions!from_session_ref!inner(class_ref)')
+          .in('sessions.class_ref', closedIds).order('id').range(from, to)),
+      ]);
+      [...muRows, ...trRows].forEach(r => { if (r.sessions?.class_ref != null) hasData.add(String(r.sessions.class_ref)); });
+      } catch (e) {
+        checkFailed = true;
+        console.warn('判斷已結業班是否還有補課/調課資料失敗，改為列出全部已結業班：', e.message);
+      }
+    }
+
+    _classOptions = all
+      .filter(c => c.status !== '已結業' || checkFailed || hasData.has(String(c.id)))
+      .map(c => ({ class_ref: String(c.id), class_name: c.class_name, status: c.status }))
+      // 進行中／準備中的班在前，已結業（還有資料）的排後面
+      .sort((a, b) => (a.status === '已結業') - (b.status === '已結業') || a.class_name.localeCompare(b.class_name, 'zh-Hant'));
+  }
+
+  /** _filterClass 存的是班別編號（字串），不再用班名——不同期的班可能同名 */
+  function _filterClassName() {
+    return _classOptions.find(c => c.class_ref === _filterClass)?.class_name || '';
   }
 
   // ── RPC / 資料操作 ──────────────────────────────────────────
@@ -173,7 +207,7 @@
     const sel = container.querySelector('#mo-class');
     if (!sel) return;
     sel.innerHTML = '<option value="">全部班別</option>' +
-      _classOptions.map(c => `<option${c.class_name === _filterClass ? ' selected' : ''}>${c.class_name}</option>`).join('');
+      _classOptions.map(c => `<option value="${c.class_ref}"${c.class_ref === _filterClass ? ' selected' : ''}>${c.class_name}${c.status === '已結業' ? '（已結業）' : ''}</option>`).join('');
   }
 
   function renderShell(container) {
@@ -232,6 +266,10 @@
     _updateWipeBtn(container);
   }
 
+  function classOptStatusSuffix() {
+    return _classOptions.find(c => c.class_ref === _filterClass)?.status === '已結業' ? '（已結業）' : '';
+  }
+
   /** 「清空此班補課/調課資料」按鈕：只在選到特定班別時顯示；未結業封存的班顯示但按不下去，
    *  只是畫面上的防呆提示，實際安全檢查仍在 runWipeClass 那兩層（已結業／無未上完堂次） */
   function _updateWipeBtn(container) {
@@ -244,8 +282,8 @@
       return;
     }
     btn.style.display = '';
-    btn.textContent = `🗑️ 清空「${_filterClass}」補課/調課資料`;
-    const classOpt = _classOptions.find(c => c.class_name === _filterClass);
+    btn.textContent = `🗑️ 清空「${_filterClassName()}」補課/調課資料${classOptStatusSuffix()}`;
+    const classOpt = _classOptions.find(c => c.class_ref === _filterClass);
     const notFinished = classOpt?.status !== '已結業';
     btn.disabled = notFinished;
     if (hint) {
@@ -260,8 +298,8 @@
   function showWipeClassConfirm(container) {
     const area = container.querySelector('#mo-wipe-area');
     if (area.innerHTML) { area.innerHTML = ''; return; }
-    const className = _filterClass;
-    if (!className) return;
+    const className = _filterClassName();
+    if (!_filterClass || !className) return;
     area.innerHTML = `
       <div class="buke-card" style="margin-bottom:12px;border-color:var(--danger-tx)">
         <div style="font-weight:500;margin-bottom:8px;color:var(--danger-tx)">⚠️ 清空「${className}」補課/調課資料</div>
@@ -290,7 +328,7 @@
     okBtn.disabled = true;
     msgEl.textContent = '清空中…';
     try {
-      const classOpt = _classOptions.find(c => c.class_name === className);
+      const classOpt = _classOptions.find(c => c.class_ref === _filterClass);
       const classRef = classOpt?.class_ref;
       if (!classRef) throw new Error('找不到對應班別，請重新整理後再試');
 
@@ -358,7 +396,7 @@
 
     const urgent = _makeups
       .filter(r => r.status === '待補課')
-      .filter(r => !_filterClass || r._class_name === _filterClass)
+      .filter(r => !_filterClass || String(r._class_ref) === _filterClass)
       .map(r => {
         const dl = r.deadline_date ? new Date(r.deadline_date) : null;
         const daysLeft = dl ? Math.ceil((dl - today) / 86400000) : null;
@@ -413,7 +451,7 @@
     renderUrgentSummary(container);
 
     let muFiltered = _makeups.filter(r => {
-      if (_filterClass && r._class_name !== _filterClass) return false;
+      if (_filterClass && String(r._class_ref) !== _filterClass) return false;
       if (_filterStatus === 'pending') return r.status === '待補課' && !r._overdue;
       if (_filterStatus === 'done')    return r.status === '已完成';
       if (_filterStatus === 'overdue') return r._overdue;
