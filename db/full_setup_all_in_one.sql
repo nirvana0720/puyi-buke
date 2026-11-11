@@ -2556,6 +2556,7 @@ DECLARE
   v_cur_source  text;
   v_final_mark  text;
   v_synced      int := 0;
+  v_inserted    boolean := false;  -- 這位學員是不是這次才新增（中途加入）
   r             jsonb;
   PROTECTED     text[] := ARRAY['V','L','ML','M'];
 BEGIN
@@ -2632,7 +2633,24 @@ BEGIN
       dharma_name = EXCLUDED.dharma_name,
       group_num   = EXCLUDED.group_num
       -- group_id 刻意不更新（刷卡系統沒有性別資訊，不能蓋掉已經組合好的「男1組」格式）
-    RETURNING id INTO v_member_ref;
+    RETURNING id, (xmax = 0) INTO v_member_ref, v_inserted;
+
+    -- 3a-2. 中途加入：這位學員是這次同步才新增的，把這個班「已經上過、而且已有人出缺勤資料」
+    --       的堂次補一筆缺席（O），跟 zenclass 的算法一致（zenclass 對加入前的日期也是空白＝缺席）。
+    --       放香（全班都是 F）、沒上課（is_held=false）、還沒人有資料的堂次不補；目前這一堂由下面
+    --       3d 處理，這裡排除；已有紀錄的不動（DO NOTHING）。
+    IF v_inserted THEN
+      INSERT INTO attendance (member_ref, session_ref, mark, source)
+      SELECT v_member_ref, s.id, 'O', 'api'
+        FROM sessions s
+       WHERE s.class_ref = v_class_ref
+         AND s.is_held = true
+         AND s.date <= (now() AT TIME ZONE 'Asia/Taipei')::date
+         AND s.id <> v_session_ref
+         AND EXISTS (SELECT 1 FROM attendance a2
+                      WHERE a2.session_ref = s.id AND a2.mark IS DISTINCT FROM 'F')
+      ON CONFLICT (member_ref, session_ref) DO NOTHING;
+    END IF;
 
     SELECT mark, source
     INTO v_cur_mark, v_cur_source

@@ -88,6 +88,18 @@ function renderRollcall(container, data) {
        </div>`
     : '';
 
+  // 同步時間提醒：只在「上課日」（今天有課堂且有實際上課）顯示
+  // 若現場電腦排程時間有調整，這裡的時間要一併修改（見 grabber/node_syncer/README.txt）
+  const syncNoteHtml = (data.has_session && data.is_held)
+    ? `<div class="buke-msg" style="background:var(--surface-alt);color:var(--muted);font-size:15px;line-height:1.7;margin-bottom:12px">
+         ⏱ 提醒：此頁的出席資料不是即時更新。<br>
+         系統會在上課日的固定時間，自動從刷卡系統同步一次：<br>
+         早班 9:20、9:25、9:30、10:00、10:10、11:00；<br>
+         晚班 19:20、19:25、19:30、20:00、20:10、21:00。<br>
+         剛刷卡的同修，可能要等下一次同步後才會顯示「出席」，請稍候再重新整理。
+       </div>`
+    : '';
+
   const groupsHtml = [...groups.entries()].map(([gid, members]) => `
     <div class="buke-section" style="margin-bottom:8px">${gid}</div>
     <div class="buke-grid" style="margin-bottom:16px">
@@ -109,6 +121,7 @@ function renderRollcall(container, data) {
       <span class="sub">${data.session_date || ''} 點名表</span>
     </div>
     ${summaryHtml}
+    ${syncNoteHtml}
     ${noticeHtml}
     ${_renderMakeupCompletions(data.makeup_completions)}
     ${groupsHtml || '<p class="buke-empty">此班目前無在學學員。</p>'}
