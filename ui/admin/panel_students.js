@@ -176,6 +176,38 @@
         openStudentDetail(Number(btn.dataset.memberDbId), btn.dataset.name);
       });
     });
+
+    table.querySelectorAll('.btn-set-gender').forEach(btn => {
+      btn.addEventListener('click', () => setGender(btn));
+    });
+  }
+
+  // ── 補性別：組別只有數字（例如「2」）時，補成「男2組」「女2組」──────────
+  // 起因：刷卡同步時，若 zenclass 有名冊以外的人，系統只拿得到組別數字（官方沒有性別），
+  // 所以組別會顯示成「1」「2」。同步不會覆蓋已存在學員的組別，所以手動補上後不會被改回去。
+  function isPlainGroup(g) { return /^\d+$/.test(String(g || '').trim()); }
+
+  function genderButtons(r) {
+    if (!isPlainGroup(r.group_id)) return '';
+    const base = `data-member-db-id="${r.member_db_id}" data-name="${r.name}" data-group="${String(r.group_id).trim()}"`;
+    const st = 'font-size:12px;padding:2px 8px;min-height:26px;margin-right:4px;margin-top:4px';
+    return `<br><button class="buke-btn buke-btn-ghost btn-set-gender" ${base} data-gender="男" style="${st}">補男</button>`
+         + `<button class="buke-btn buke-btn-ghost btn-set-gender" ${base} data-gender="女" style="${st}">補女</button>`;
+  }
+
+  async function setGender(btn) {
+    const { memberDbId, name, group, gender } = btn.dataset;
+    const newGroup = `${gender}${group}組`;
+    if (!window.confirm(`要把「${name}」的組別由「${group}」改成「${newGroup}」嗎？\n\n（只會改這一位的組別，不影響出缺勤與補課紀錄）`)) return;
+    btn.disabled = true;
+    try {
+      const { error } = await _sb.from('members').update({ group_id: newGroup }).eq('id', Number(memberDbId));
+      if (error) throw error;
+      await refreshStudentsList();
+    } catch (e) {
+      btn.disabled = false;
+      window.alert(`補性別失敗：${e.message || e}`);
+    }
   }
 
   // ── 學員明細（點姓名跳出，顯示每堂出缺勤＋補課紀錄）────────────
@@ -425,7 +457,7 @@
           ${r.name}
         </button>
       </td>
-      <td style="padding:8px 10px;color:var(--muted);font-size:13px">${r.class_name}<br>${r.group_id || '—'}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:13px">${r.class_name}<br>${r.group_id || '—'}${genderButtons(r)}</td>
       <td style="text-align:center;padding:8px">${r.phys}</td>
       <td style="text-align:center;padding:8px;color:${r.absent > 0 ? 'var(--danger-tx)' : 'inherit'}">${r.absent}</td>
       <td style="text-align:center;padding:8px">${r.makeup}</td>
