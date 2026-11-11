@@ -635,6 +635,7 @@
       }
 
       let attendRowsLen = 0;
+      let staleMsg = '';
       if (hasDateCols) {
         const heldSet = new Set(heldDates);
         // 3. upsert sessions（依「本期全部日期欄」建立，含尚未發生、還沒有出缺勤資料的未來堂次；
@@ -654,6 +655,10 @@
             .upsert(sessionRows.slice(i, i + BATCH), { onConflict: 'class_ref,date' });
           if (error) throw new Error(`sessions upsert 失敗：${error.message}`);
         }
+
+        // 3b. 清掉「資料庫有、這份 Excel 沒有」且完全沒有資料的舊堂次，並依日期重新編號第幾堂
+        progEl.textContent = '整理舊堂次…';
+        staleMsg = staleResultHtml(await cleanupStaleSessions(sb, classRef, sessionDates));
 
         // 4. 查回 members id 與 sessions id
         progEl.textContent = '查回索引…';
@@ -723,7 +728,7 @@
       const cancelledMsg = cancelledDates.length ? `、${cancelledDates.length} 天停課／颱風假（未建出缺勤）` : '';
       resultEl.innerHTML = hasDateCols
         ? `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
-             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${cancelledMsg}${roleMsg}。
+             ✅ 已匯入 ${members.length} 位學員、${heldDates.length} 堂已上課次（另建 ${futureCount} 堂未來堂次）、${attendRowsLen} 筆出缺勤${cancelledMsg}${roleMsg}。${staleMsg}
            </div>`
         : `<div class="buke-msg" style="background:var(--ok-bg);color:var(--ok-tx)">
              ✅ 已匯入 ${members.length} 位學員${roleMsg}。
@@ -736,6 +741,81 @@
       confirmBtn.disabled = false;
       progEl.textContent  = '';
     }
+  }
+
+  // ── 匯入後整理堂次：刪除多餘的舊堂次＋依日期重新編號 ───────────────────────────
+  // 匯入用 (class_ref,date) upsert，只會新增/更新 Excel 裡有的日期，不會動「資料庫有、Excel 沒有」的舊堂次，
+  // 新舊並存會讓「第幾堂」重複。這裡把那些舊堂次清掉，但只刪「完全沒有任何資料」的：
+  //   - 已標為「已上課」(is_held) 的不刪
+  //   - 有出缺勤、補課登記、日夜補（調課）登記的不刪（這三張表對堂次都是 ON DELETE CASCADE，
+  //     直接刪堂次會連資料一起消失，所以刪之前逐堂逐表先確認沒有資料）
+  // 安全保護：多餘堂次超過 MAX_STALE 堂、或超過班上現有堂次一半時一律不自動刪（可能是這份 Excel 只含部分日期），改為提示手動確認；
+  // 檢查或刪除過程出錯也不刪、不中斷匯入，只回報警示。
+  const MAX_STALE = 5;
+  const _cmpDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+  async function cleanupStaleSessions(sb, classRef, keepDates) {
+    const result = { deleted: [], kept: [], skipped: 0, warn: '', renumbered: 0 };
+    const keepSet = new Set(keepDates);
+    try {
+      const { data: exist, error: eErr } = await sb.from('sessions')
+        .select('id,date,is_held').eq('class_ref', classRef);
+      if (eErr) throw new Error(`查堂次失敗：${eErr.message}`);
+      const stale = (exist || []).filter(x => !keepSet.has(x.date)).sort(_cmpDate);
+
+      // 多餘的超過 MAX_STALE 堂、或超過這個班現有堂次的一半，都視為異常（例如這份 Excel 只含部分日期），不自動刪
+      if (stale.length > MAX_STALE || stale.length * 2 > (exist || []).length) {
+        result.skipped = stale.length;
+      } else if (stale.length) {
+        const deletable = [];
+        for (const st of stale) {
+          if (st.is_held) { result.kept.push(st.date); continue; }
+          let used = false;
+          for (const [table, col] of [['attendance', 'session_ref'], ['makeups', 'session_ref'], ['transfers', 'from_session_ref']]) {
+            const { data, error } = await sb.from(table).select(col).eq(col, st.id).limit(1);
+            if (error) throw new Error(`檢查${table}失敗：${error.message}`);
+            if (data && data.length) { used = true; break; }
+          }
+          if (used) result.kept.push(st.date); else deletable.push(st);
+        }
+        if (deletable.length) {
+          const { error: dErr } = await sb.from('sessions').delete().in('id', deletable.map(x => x.id));
+          if (dErr) throw new Error(`刪除多餘堂次失敗：${dErr.message}`);
+          result.deleted = deletable.map(x => x.date);
+        }
+      }
+    } catch (e) {
+      result.warn = e.message;
+      return result;   // 出錯就不繼續（也不重編），保持現狀
+    }
+
+    // 依日期先後重新編號「第幾堂」，跟後台「堂次管理」的做法一致
+    try {
+      const { data: all, error: aErr } = await sb.from('sessions')
+        .select('id,date,week_num').eq('class_ref', classRef);
+      if (aErr) throw new Error(`查堂次失敗：${aErr.message}`);
+      const sorted = (all || []).slice().sort(_cmpDate);
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i].week_num !== i + 1) {
+          const { error: uErr } = await sb.from('sessions').update({ week_num: i + 1 }).eq('id', sorted[i].id);
+          if (uErr) throw new Error(`重新編號失敗：${uErr.message}`);
+          result.renumbered++;
+        }
+      }
+    } catch (e) {
+      result.warn = e.message;
+    }
+    return result;
+  }
+
+  /** 把整理結果轉成顯示在匯入結果裡的文字（沒事就回傳空字串） */
+  function staleResultHtml(r) {
+    const parts = [];
+    if (r.deleted.length) parts.push(`🧹 已自動刪除 ${r.deleted.length} 堂 Excel 裡沒有、也沒有任何資料的舊堂次：${r.deleted.join('、')}`);
+    if (r.kept.length) parts.push(`⚠ 另有 ${r.kept.length} 堂 Excel 裡沒有、但已有出缺勤／補課資料的堂次（${r.kept.join('、')}）已保留未刪，請到「班別設定→堂次管理」確認`);
+    if (r.skipped) parts.push(`⚠ 這個班有 ${r.skipped} 堂 Excel 裡沒有的堂次，數量較多，為安全起見沒有自動刪除，請到「班別設定→堂次管理」確認是否要刪`);
+    if (r.warn) parts.push(`⚠ 整理舊堂次時發生問題（${r.warn}），請到「班別設定→堂次管理」檢查日期與堂數`);
+    return parts.length ? '<br>' + parts.join('<br>') : '';
   }
 
   window.PanelImport = { loadImportPanel };
