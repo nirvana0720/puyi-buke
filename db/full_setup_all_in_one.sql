@@ -887,6 +887,7 @@ BEGIN
     'attendance',      v_attend,
     'makeups',         v_makeups,
     'settings', jsonb_build_object(
+      'makeup_earliest_mode',  COALESCE(v_set.makeup_earliest_mode, '下週一'),  -- 2026-11-16：學員頁最早可補日要跟 register_makeup 同規則
       'makeup_earliest_days', COALESCE(v_set.makeup_earliest_days, 7),
       'makeup_deadline_days', COALESCE(v_set.makeup_deadline_days, 40)
     )

@@ -39,15 +39,20 @@ function toDateStr(d) {
 }
 
 /**
- * 計算最早可補課日
- * = sessionDate + makeup_earliest_days（預設 7 天，即下週同日）
+ * 計算最早可補課日（與資料庫 register_makeup / 櫃台同一套規則）
+ * - makeup_earliest_mode = '下週一'：缺課那週的下一個星期一
+ * - makeup_earliest_mode = '缺課後N天'：缺課日 + makeup_earliest_days（預設 7）
+ * - 沒帶 mode（舊資料庫尚未更新）：沿用舊算法，缺課日 + makeup_earliest_days
  *
  * @param {string|Date} sessionDate  上課日期
- * @param {object}      settings     { makeup_earliest_days: number }
+ * @param {object}      settings     { makeup_earliest_mode?: string, makeup_earliest_days: number }
  * @returns {string}  'YYYY-MM-DD'
  */
 function computeEarliest(sessionDate, settings) {
   const base = new Date(sessionDate);
+  if (settings && settings.makeup_earliest_mode === '下週一') {
+    return toDateStr(addDays(getWeekMonday(base), 7));
+  }
   const days = (settings && settings.makeup_earliest_days != null)
     ? settings.makeup_earliest_days
     : 7;

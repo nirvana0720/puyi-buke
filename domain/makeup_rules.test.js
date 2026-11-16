@@ -30,6 +30,14 @@ assert.strictEqual(computeEarliest('2026-06-24', DEFAULT), '2026-07-01',
 assert.strictEqual(computeEarliest('2026-06-24', { makeup_earliest_days: 3 }), '2026-06-27',
   '課後 3 天 → 6/27');
 
+// 「下週一」模式：缺課那週的下一個星期一（2026-06-24 是週三 → 6/29）
+const MON = { makeup_earliest_mode: '下週一', makeup_earliest_days: 7 };
+assert.strictEqual(computeEarliest('2026-06-24', MON), '2026-06-29', '週三缺課 → 下週一 6/29');
+assert.strictEqual(computeEarliest('2026-06-22', MON), '2026-06-29', '週一缺課 → 下週一 6/29');
+assert.strictEqual(computeEarliest('2026-06-28', MON), '2026-06-29', '週日缺課 → 隔天週一 6/29');
+assert.strictEqual(computeEarliest('2026-06-24', { makeup_earliest_mode: '缺課後N天', makeup_earliest_days: 3 }), '2026-06-27',
+  '缺課後N天模式 → 照天數');
+
 // ── isOverdue ────────────────────────────────────────────────
 assert.strictEqual(isOverdue('2023-05-28', '2023-05-29'), true,  '截止日翌日 → 逾期');
 assert.strictEqual(isOverdue('2023-05-28', '2023-05-28'), false, '截止日當天 → 未逾期');
