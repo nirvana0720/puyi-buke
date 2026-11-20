@@ -597,13 +597,19 @@ function renderMakeupRegisterForm(containerId, member, classes, todayStr, onSubm
     sessWrap.innerHTML = (cls.absences || []).map((a, idx) => {
       const wk = a.week_num ? ` 第${a.week_num}堂` : '';
       const disabled = !!a.already_registered;
+      // 2026-11-20：已登記、已到過、而且義工已按過「尚未補完」（沒有到場中）的補到一半堂次，
+      // 後端 already_registered 會回 false，這裡不鎖，提示改成可再勾選一次改約新日期
+      //（kiosk_register_makeup 是更新同一筆登記，到場紀錄與舊備註都保留）。
+      const halfDone = !disabled && a.makeup_id && a.attend_count >= 1;
       const hint = disabled
         ? (a.attend_count >= 1
-            ? `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}，已到 ${a.attend_count} 次，尚未補完課）`
+            ? `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}，已到 ${a.attend_count} 次，尚未補完課，目前到場中，請先結案）`
             : `（已登記：${a.planned_date || ''} ${a.planned_slot || ''}）`)
-        : '';
+        : halfDone
+          ? `（補到一半：已到 ${a.attend_count} 次，尚未補完課，可再勾選改約新時間）`
+          : '';
       // 已登記且有 makeup_id 才給編輯按鈕（舊資料 kiosk_lookup_member 若沒回 makeup_id，維持原本純顯示）
-      const editBtn = disabled && a.makeup_id && onEdit
+      const editBtn = (disabled || halfDone) && a.makeup_id && onEdit
         ? `<button type="button" class="buke-btn" data-edit-abs="${idx}"
                    style="font-size:12px;padding:3px 10px;min-height:auto;margin-left:6px;
                           background:var(--makeup-tx);border-radius:var(--r-pill)">編輯</button>`

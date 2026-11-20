@@ -2,6 +2,40 @@
 // 供 render.js 掛按鈕事件；呼叫 Supabase RPC 時帶 p_acting_leader_db_id
 'use strict';
 
+/**
+ * 2026-11-20：學長／班長「代為登記補課」可選的缺課清單。
+ * 除了「還沒登記過」的缺課（unregistered_absences），也納入「補到一半」的堂次——
+ * 已經到場補過、而且義工已按過「此堂課尚未補完」（目前沒有到場中），期限未過，
+ * 讓學長可以直接再登記一次、改約新的補課時間（register_makeup 是 ON CONFLICT 更新
+ * 同一筆登記，已補過的到場紀錄與備註都會保留）。到場中、還沒來過的登記不納入
+ * （還沒來過的用「已登記補課」那區的「改預約時間」）。
+ * @param {object} row  StudentRow（含 unregistered_absences、makeups）
+ */
+function getProxyAbsences(row) {
+  const today = new Date().toLocaleDateString('sv-SE');
+  const fresh = (row.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
+  const half = (row.makeups || [])
+    .filter(mk => mk.status === '待補課' && !mk.is_overdue
+      && !(mk.deadline_date && mk.deadline_date < today)
+      && (mk.attend_count || 0) >= 1 && !mk.has_open_attendance)
+    .map(mk => ({
+      session_ref:   mk.session_ref,
+      session_date:  mk.session_date,
+      mark:          null,
+      deadline_date: mk.deadline_date,
+      attend_count:  mk.attend_count,
+      half_done:     true,
+    }));
+  return fresh.concat(half).sort((a, b) => String(a.session_date).localeCompare(String(b.session_date)));
+}
+
+/** 代登記選單／標題用的缺課文字（補到一半的標示已到幾次） */
+function proxyAbsenceLabel(a) {
+  return a.half_done
+    ? `${a.session_date}（補到一半，已到 ${a.attend_count} 次，再登記會改約新時間）`
+    : `${a.session_date}（${a.mark}）`;
+}
+
 /** 代補課表單欄位＋送出按鈕的 body HTML（不含選堂次，那段由呼叫端視情況接在前面） */
 function buildProxyMakeupFieldsHtml() {
   return `
@@ -100,18 +134,17 @@ function renderProxyMakeupForm(formEl, sb, memberDbId, sessionRef, leaderDbId, o
  * @param {number}      leaderDbId
  */
 function renderProxyMakeupPicker(formEl, sb, row, leaderDbId) {
-  const today = new Date().toLocaleDateString('sv-SE');
-  const absences = (row.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
+  const absences = getProxyAbsences(row);
   if (!absences.length) return;
 
   if (absences.length === 1) {
-    const dateHtml = `<div style="margin-bottom:14px;font-size:16px">缺課日期：${absences[0].session_date}（${absences[0].mark}）</div>`;
+    const dateHtml = `<div style="margin-bottom:14px;font-size:16px">缺課日期：${proxyAbsenceLabel(absences[0])}</div>`;
     renderProxyMakeupForm(formEl, sb, row.id, absences[0].session_ref, leaderDbId, null, dateHtml);
     return;
   }
 
   const opts = absences.map(a =>
-    `<option value="${a.session_ref}">${a.session_date}（${a.mark}）</option>`
+    `<option value="${a.session_ref}">${proxyAbsenceLabel(a)}</option>`
   ).join('');
 
   const bodyHtml = `
@@ -383,6 +416,7 @@ if (typeof window !== 'undefined') {
   window.LeaderActions = {
     renderProxyMakeupForm,
     renderProxyMakeupPicker,
+    getProxyAbsences,
     renderEditMakeupTimeSheet,
     actingCancelMakeup,
     renderProxyTransferForm,
@@ -392,6 +426,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     renderProxyMakeupForm,
     renderProxyMakeupPicker,
+    getProxyAbsences,
     renderEditMakeupTimeSheet,
     actingCancelMakeup,
     renderProxyTransferForm,

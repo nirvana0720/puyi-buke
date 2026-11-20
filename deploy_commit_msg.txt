@@ -1,1 +1,3 @@
-domain/makeup_rules.js、db/rpc_views.sql：學員自己登記補課頁的「最早可補日」改成跟後台設定、櫃台同一套規則（下週一／缺課後N天）；原本一律用缺課日+7天。get_student_view 多回傳 makeup_earliest_mode（需在 Supabase 執行 rpc_views.sql）；同步 full_setup_all_in_one.sql 與單元測試。
+補到一半的補課可再登記：義工櫃台勾選框與學長班長代登記，對「已到場、已按尚未補完」的缺課不再鎖住，可改約新時間；再登記時備註留空保留舊備註。
+db/rpc_06_kiosk.sql（kiosk_lookup_member、kiosk_register_makeup）、db/rpc_views.sql（makeups 多回傳 has_open_attendance）、db/full_setup_all_in_one.sql 同步；
+ui/kiosk/kiosk_render.js、ui/leader/actions.js、ui/leader/render.js 畫面調整；移交手冊.md 補一列資料庫修正與如何新增單一學員常見問題。

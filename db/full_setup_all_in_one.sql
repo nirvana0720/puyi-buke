@@ -625,6 +625,8 @@ BEGIN
             'earphone',      mk.earphone,
             'note',          mk.note,
             'attend_count',  (SELECT count(*) FROM makeup_attendances ma WHERE ma.makeup_ref = mk.id),
+            -- 2026-11-20：學長代登記要判斷「補到一半、可再登記」（已到場過且目前沒有到場中）
+            'has_open_attendance', EXISTS (SELECT 1 FROM makeup_attendances ma3 WHERE ma3.makeup_ref = mk.id AND ma3.departed_at IS NULL),
             'is_overdue',    (mk.deadline_date < current_date)
           ) ORDER BY s.date), '[]'::jsonb)
           FROM makeups mk
@@ -3445,7 +3447,14 @@ BEGIN
                 'date',               s.date,
                 'week_num',           s.week_num,
                 'deadline_date',      dl.deadline_date,
-                'already_registered', (mk.status = '待補課'),
+                -- 2026-11-20：補到一半（已到場過、且目前沒有到場中、已按過「尚未補完」）不再鎖住，
+                -- 可以再勾選一次改約新日期；kiosk_register_makeup 是 ON CONFLICT 更新同一筆，
+                -- 到場紀錄不會消失。還沒來過、或正在到場中的，仍維持「已登記」鎖住。
+                'already_registered', (mk.status = '待補課' AND (
+                    NOT EXISTS (SELECT 1 FROM makeup_attendances ma0 WHERE ma0.makeup_ref = mk.id)
+                    OR EXISTS (SELECT 1 FROM makeup_attendances ma1 WHERE ma1.makeup_ref = mk.id AND ma1.departed_at IS NULL)
+                )),
+                'has_open_attendance', EXISTS (SELECT 1 FROM makeup_attendances ma2 WHERE ma2.makeup_ref = mk.id AND ma2.departed_at IS NULL),
                 'makeup_id',          mk.id,
                 'planned_date',       mk.planned_date,
                 'planned_slot',       mk.planned_slot,
@@ -3560,7 +3569,8 @@ BEGIN
   ON CONFLICT (member_ref, session_ref) DO UPDATE SET
     earphone = EXCLUDED.earphone, planned_date = EXCLUDED.planned_date,
     planned_slot = EXCLUDED.planned_slot, earliest_date = EXCLUDED.earliest_date,
-    deadline_date = EXCLUDED.deadline_date, note = EXCLUDED.note,
+    deadline_date = EXCLUDED.deadline_date,
+    note = COALESCE(EXCLUDED.note, makeups.note),  -- 2026-11-20：補到一半再登記時，備註留空就保留舊備註
     status = '待補課', registered_by = '櫃台', updated_at = now();
 
   RETURN '{"ok":true}'::jsonb;

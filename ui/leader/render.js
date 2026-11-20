@@ -329,7 +329,11 @@ function buildCard(m, sectionCls, needCredit, leaderDbId, sb) {
     : `出席 ${m.physical} · 補課 ${m.makeup} · 缺課 ${m.absent} ｜ 距結業還差 ${Math.max(0, gap)} 堂`;
 
   const today          = new Date().toLocaleDateString('sv-SE');
-  const availableUnreg = (m.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
+  // 2026-11-20：代為登記補課的可選堂次，除了還沒登記的缺課，也含「補到一半」可再登記的堂次
+  //（見 actions.js getProxyAbsences）；actions.js 較晚載入，這裡執行時已可用，沒載入就退回舊算法
+  const availableUnreg = (window.LeaderActions && window.LeaderActions.getProxyAbsences)
+    ? window.LeaderActions.getProxyAbsences(m)
+    : (m.unregistered_absences || []).filter(a => !(a.deadline_date && a.deadline_date < today));
   const hasUnreg       = availableUnreg.length > 0;
   const proxyBtnId     = `card-proxy-${m.id}`;
   const proxyFormId    = `card-proxy-form-${m.id}`;
