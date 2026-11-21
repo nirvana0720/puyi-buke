@@ -293,6 +293,19 @@
     addTimeRow();
     container.querySelector('#btn-add-blackout-slot').addEventListener('click', addTimeRow);
 
+    // 只有一天（結束日期空白或同開始日期）時，「套用星期」用不到，整排變灰提示
+    const wdRowEl = container.querySelector('#blackout-weekdays-row');
+    function syncWeekdayRow() {
+      const sd = container.querySelector('#inp-blackout-date').value;
+      const ed = container.querySelector('#inp-blackout-date-end').value;
+      const single = !ed || ed === sd;
+      wdRowEl.style.opacity = single ? '0.4' : '1';
+      wdRowEl.title = single ? '只有一天時不需要選星期' : '';
+    }
+    container.querySelector('#inp-blackout-date').addEventListener('input', syncWeekdayRow);
+    container.querySelector('#inp-blackout-date-end').addEventListener('input', syncWeekdayRow);
+    syncWeekdayRow();
+
     container.querySelector('#chk-blackout-allday').addEventListener('change', e => {
       container.querySelector('#blackout-time-row').style.display = e.target.checked ? 'none' : 'flex';
     });
@@ -308,7 +321,12 @@
       if (endDate < startDate) { fail('結束日期不能早於開始日期'); return; }
 
       // 展開日期範圍（只留勾選的星期）。用 UTC 計算，避免時區造成日期差一天
-      const wds = new Set([...container.querySelectorAll('.chk-blackout-wd:checked')].map(c => Number(c.value)));
+      // 2026-11-21：只有一天（結束日期留空或同開始日期）時，不看「套用星期」——那天就是要設的那天；
+      // 只有選一段日期時才用星期篩選，也才要求至少勾一個星期。
+      const singleDay = endDate === startDate;
+      const wds = singleDay
+        ? new Set([0, 1, 2, 3, 4, 5, 6])
+        : new Set([...container.querySelectorAll('.chk-blackout-wd:checked')].map(c => Number(c.value)));
       if (!wds.size) { fail('請至少勾選一個星期'); return; }
       const dates = [];
       for (let t = new Date(startDate + 'T00:00:00Z'), endT = new Date(endDate + 'T00:00:00Z');

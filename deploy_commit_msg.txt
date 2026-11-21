@@ -1,3 +1,1 @@
-補到一半的補課可再登記：義工櫃台勾選框與學長班長代登記，對「已到場、已按尚未補完」的缺課不再鎖住，可改約新時間；再登記時備註留空保留舊備註。
-db/rpc_06_kiosk.sql（kiosk_lookup_member、kiosk_register_makeup）、db/rpc_views.sql（makeups 多回傳 has_open_attendance）、db/full_setup_all_in_one.sql 同步；
-ui/kiosk/kiosk_render.js、ui/leader/actions.js、ui/leader/render.js 畫面調整；移交手冊.md 補一列資料庫修正與如何新增單一學員常見問題。
+ui/admin/panel_makeup_rules.js：不開放補課日期只設一天（結束日期留空或同開始日）時，不再要求勾選「套用星期」，並把該排變灰；選一段日期時才檢查星期。
