@@ -1,1 +1,7 @@
-ui/admin/panel_makeup_rules.js：不開放補課日期只設一天（結束日期留空或同開始日）時，不再要求勾選「套用星期」，並把該排變灰；選一段日期時才檢查星期。
+櫃台「今日到場紀錄」新增「撤銷這筆」：義工按錯人（到場／尚未補完／補課完成）可當天就地撤銷；撤銷的是最後一次到場且已完成時，會一併改回待補課、出缺勤 M→O／ML→LL。
+- db/full_setup_all_in_one.sql：kiosk_get_today_log 影片補課列多回傳 attendance_id、makeup_id；新增 kiosk_undo_makeup_attendance（限當天、限影片補課，anon＋義工驗證）
+- ui/kiosk：renderTodayLog 搬到新檔 kiosk_render_todaylog.js 並加撤銷按鈕；kiosk.js 新增 kioskUndoMakeupAttendance
+- test：新增撤銷相關 8 項測試與 3 支測試輔助 RPC
+- 移交手冊.md：資料庫修正對照表補上 2026-11-16 一列（get_student_view 多回傳 makeup_earliest_mode）
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

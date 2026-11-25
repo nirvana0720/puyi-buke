@@ -34,6 +34,8 @@
 ------------------------------------------------
 - kiosk_lookup_member：補課期限公式（缺課日 + 40 天，不是舊的週數公式）
 - ingest_kiosk_attendance：刷卡同步不能覆蓋既有的 group_id
+- kiosk_undo_makeup_attendance（櫃台撤銷這筆，2026-11-25）：完成後撤銷還原待補課/M→O、
+  只到場／尚未補完撤銷、同堂多次只刪最後一筆、非當天／不存在 id／無效義工被擋
 
 之後要加新案例，照 test/run.js 裡 test(...) 的寫法複製一段來改；
 需要新的種子資料（例如新學員、新班別），改 test/seed.sql 的 test_get_seed_ids()，

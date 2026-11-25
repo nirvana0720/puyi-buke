@@ -155,6 +155,107 @@ function assertEqual(actual, expected, label) {
       assertEqual(after, before, 'group_id 不應該被刷卡同步覆蓋');
     });
 
+    // ── 2026-11-25 櫃台「撤銷這筆」kiosk_undo_makeup_attendance ─────────────
+    const S = () => seed.staff_id;
+    const newMakeup = () => rpc('test_reset_makeup', { p_member_db_id: seed.member_甲_id, p_session_ref: seed.session_absent_id });
+    const state = (mkId) => rpc('test_get_makeup_state', { p_makeup_id: mkId });
+    const attend = (mkId) => rpc('kiosk_makeup_attend', { p_staff_id: S(), p_makeup_id: mkId, p_machine_number: null });
+    const undo = (attId, staffId) => rpc('kiosk_undo_makeup_attendance', { p_staff_id: (staffId != null ? staffId : S()), p_attendance_id: attId });
+    async function latestAttendanceId(mkId) {
+      const log = await rpc('kiosk_get_today_log', { p_staff_id: S() });
+      const rows = (log || []).filter(r => r.makeup_id === mkId);
+      if (!rows.length) throw new Error('今日到場紀錄找不到這筆補課（kiosk_get_today_log 可能沒回傳 makeup_id／attendance_id）');
+      return rows[rows.length - 1].attendance_id;
+    }
+    async function expectError(promise, keyword) {
+      try { await promise; } catch (e) {
+        if (keyword && !e.message.includes(keyword)) throw new Error('錯誤訊息不對：' + e.message);
+        return;
+      }
+      throw new Error('預期要被擋下，結果卻成功了');
+    }
+
+    await test('撤銷：kiosk_get_today_log 影片補課列有 attendance_id／makeup_id', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      const attId = await latestAttendanceId(mk);
+      if (!attId) throw new Error('attendance_id 是空的');
+      await undo(attId);
+    });
+
+    await test('撤銷：到場→補課完成→撤銷，補課回待補課、出勤 M→O、到場紀錄刪除', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      await rpc('kiosk_makeup_complete', { p_staff_id: S(), p_makeup_id: mk });
+      const mid = await state(mk);
+      assertEqual([mid.status, mid.mark], ['已完成', 'M'], '完成後');
+      await undo(await latestAttendanceId(mk));
+      const s = await state(mk);
+      assertEqual([s.status, s.completed_date, s.mark, s.attendance_count], ['待補課', null, 'O', 0], '撤銷後');
+    });
+
+    await test('撤銷：只到場未結案，撤銷後到場紀錄刪除、狀態維持待補課', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      await undo(await latestAttendanceId(mk));
+      const s = await state(mk);
+      assertEqual([s.status, s.mark, s.attendance_count], ['待補課', 'O', 0], '撤銷後');
+    });
+
+    await test('撤銷：「尚未補完」結案後撤銷，到場紀錄刪除、狀態維持待補課', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      await rpc('kiosk_makeup_depart', { p_staff_id: S(), p_makeup_id: mk });
+      await undo(await latestAttendanceId(mk));
+      const s = await state(mk);
+      assertEqual([s.status, s.mark, s.attendance_count], ['待補課', 'O', 0], '撤銷後');
+    });
+
+    await test('撤銷：同一堂來兩次（尚未補完＋補課完成），只撤銷最後一筆，前一次保留', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      await rpc('kiosk_makeup_depart', { p_staff_id: S(), p_makeup_id: mk });
+      await attend(mk);
+      await rpc('kiosk_makeup_complete', { p_staff_id: S(), p_makeup_id: mk });
+      await undo(await latestAttendanceId(mk));
+      const s = await state(mk);
+      assertEqual([s.status, s.mark, s.attendance_count], ['待補課', 'O', 1], '撤銷後');
+    });
+
+    await test('撤銷：同一堂來兩次，撤銷較早那筆（尚未補完），已完成要保留', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      await rpc('kiosk_makeup_depart', { p_staff_id: S(), p_makeup_id: mk });
+      const log = await rpc('kiosk_get_today_log', { p_staff_id: S() });
+      const firstId = (log || []).filter(r => r.makeup_id === mk)[0].attendance_id;
+      await attend(mk);
+      await rpc('kiosk_makeup_complete', { p_staff_id: S(), p_makeup_id: mk });
+      await undo(firstId);
+      const s = await state(mk);
+      assertEqual([s.status, s.mark, s.attendance_count], ['已完成', 'M', 1], '撤銷較早那筆後');
+    });
+
+    await test('撤銷：非今天的到場紀錄要被擋', async () => {
+      const mk = await newMakeup();
+      await attend(mk);
+      const attId = await latestAttendanceId(mk);
+      await rpc('test_shift_attendance_days', { p_attendance_id: attId, p_days: 1 });
+      await expectError(undo(attId), '只能撤銷今天');
+      const s = await state(mk);
+      assertEqual(s.attendance_count, 1, '被擋後到場紀錄應該還在');
+    });
+
+    await test('撤銷：不存在的 id、無效義工都要被擋', async () => {
+      await expectError(undo(999999999999), '找不到這筆到場紀錄');
+      const mk = await newMakeup();
+      await attend(mk);
+      const attId = await latestAttendanceId(mk);
+      await expectError(undo(attId, 999999999999), '義工身分無效');
+      const s = await state(mk);
+      assertEqual(s.attendance_count, 1, '被擋後到場紀錄應該還在');
+      await undo(attId); // 收尾
+    });
+
   }
 
   console.log('');

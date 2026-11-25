@@ -941,45 +941,8 @@ function renderTrainingMakeupsToday(trainingMakeups, callbacks, machineStatus, m
   });
 }
 
-function renderTodayLog(records) {
-  const el = document.getElementById('kiosk-today-log');
-  if (!el) return;
-  if (!records || !records.length) {
-    el.innerHTML = '<p class="kiosk-listempty">今日尚無補課到場記錄。</p>';
-    return;
-  }
-  function durStr(a, d) {
-    if (!a || !d) return '—';
-    const m = Math.round((new Date(d) - new Date(a)) / 60000);
-    return m < 60 ? `${m} 分` : `${Math.floor(m/60)}h${m%60 ? ` ${m%60}m` : ''}`;
-  }
-  function timeStr(ts) {
-    if (!ts) return '—';
-    return new Date(ts).toLocaleTimeString('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit'});
-  }
-  el.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse">
-    <thead><tr style="background:var(--surface-alt);color:var(--muted);text-align:left">
-      <th style="padding:8px">姓名</th><th style="padding:8px">班別</th>
-      <th style="padding:8px">缺課日</th><th style="padding:8px">到場</th>
-      <th style="padding:8px">離場</th><th style="padding:8px">時長</th>
-      <th style="padding:8px">機台</th>
-      <th style="padding:8px">狀態</th>
-    </tr></thead>
-    <tbody>
-      ${records.map((r, i) => `<tr style="border-top:1px solid var(--line);${i % 2 ? 'background:var(--surface-alt)' : ''}">
-        <td style="padding:8px;font-weight:500">${r.member_name}</td>
-        <td style="padding:8px;color:var(--muted)">${r.class_name}</td>
-        <td style="padding:8px;color:var(--muted)">${r.session_date}</td>
-        <td style="padding:8px">${timeStr(r.attended_at)}</td>
-        <td style="padding:8px">${timeStr(r.departed_at)}</td>
-        <td style="padding:8px">${durStr(r.attended_at, r.departed_at)}</td>
-        <td style="padding:8px;color:var(--muted)">${r.machine_number ? `🖥️${r.machine_number}號機` : '—'}</td>
-        <td style="padding:8px;color:${r.status==='已完成'?'var(--ok-tx)':'var(--warn-tx)'}">${r.status==='已完成'?'✅ 補完':'⏳ 尚未補完'}</td>
-      </tr>`).join('')}
-    </tbody>
-  </table>`;
-}
+// renderTodayLog 已於 2026-11-25 搬到 kiosk_render_todaylog.js（加「撤銷這筆」）
 
 if (typeof window !== 'undefined') {
-  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, renderTodayLog, updateMachineOptions, toggleEditMakeupForm, toggleInlineMakeupEditForm, kioskInlineConfirm };
+  window.KioskRender = { renderTransfers, renderMakeups, renderMakeupRegisterForm, renderTransferRegisterForm, renderTrainingMakeupsToday, updateMachineOptions, toggleEditMakeupForm, toggleInlineMakeupEditForm, kioskInlineConfirm };
 }

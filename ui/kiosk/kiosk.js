@@ -46,6 +46,13 @@ async function kioskMakeupComplete(sb, staffId, makeupId) {
   return data;
 }
 
+// 2026-11-25 新增：櫃台「今日到場紀錄」撤銷這筆（影片補課、限當天；已完成會一併還原待補課）
+async function kioskUndoMakeupAttendance(sb, staffId, attendanceId) {
+  const { data, error } = await sb.rpc('kiosk_undo_makeup_attendance', { p_staff_id: staffId, p_attendance_id: attendanceId });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 async function kioskMakeupDepart(sb, staffId, makeupId) {
   const { data, error } = await sb.rpc('kiosk_makeup_depart', { p_staff_id: staffId, p_makeup_id: makeupId });
   if (error) throw new Error(error.message);
@@ -328,10 +335,19 @@ function todayStr() {
 
   // ── 今日到場記錄＋機台使用狀況 ────────────────────────────────
   // 重新抓「今日到場記錄」，同時更新到場記錄表格與各卡片機台下拉選單的「使用中」提示
+  // 今日到場紀錄每列「撤銷這筆」：撤銷後整頁重載（今日補課清單＋到場紀錄＋提醒），
+  // 因為若原本已完成會改回待補課，卡片要重新出現在今日補課清單
+  const todayLogCallbacks = {
+    onUndo: async (attendanceId) => {
+      await kioskUndoMakeupAttendance(sb, staff.staff_id, attendanceId);
+      loadDay(datePicker.value);
+    },
+  };
+
   async function refreshTodayLogAndMachines() {
     try {
       const records = await kioskGetTodayLog(sb, staff.staff_id);
-      KioskRender.renderTodayLog(records);
+      KioskRender.renderTodayLog(records, todayLogCallbacks);
       KioskRender.updateMachineOptions(computeMachineStatus(records));
     } catch (_) {}
   }
@@ -462,7 +478,7 @@ function todayStr() {
           loadDay(datePicker.value); // 完成後重新載入，讓卡片從「今日培訓補課」清單消失
         },
       }, machineStatus, machineCount);
-      KioskRender.renderTodayLog(todayLogRecords);
+      KioskRender.renderTodayLog(todayLogRecords, todayLogCallbacks);
       await loadAlertsAndRegistrations();
     } catch (err) {
       document.getElementById('kiosk-transfers').innerHTML =
@@ -671,6 +687,6 @@ if (typeof window !== 'undefined') {
     kioskTrainingMakeupDepart,
     kioskGetAttendanceAlerts, kioskMakeupCancelAttend, kioskTransferResetToRegistered,
     kioskCancelMakeup, kioskCancelTransfer, kioskGetTodayRegistrations,
-    kioskGetUpcomingRegistrations,
+    kioskGetUpcomingRegistrations, kioskUndoMakeupAttendance,
   };
 }

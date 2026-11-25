@@ -1,4 +1,4 @@
--- 職責：自動化測試專用種子資料 + 3 支測試輔助 RPC
+-- 職責：自動化測試專用種子資料 + 測試輔助 RPC（test_ 開頭）
 -- ⚠️ 只能貼在「測試專案」的 SQL Editor 執行，絕對不要貼到正式環境！
 --    正式環境網址是 puyi-buke.vercel.app 用的那個 Supabase 專案，跟這個測試專案是分開的兩個。
 --
@@ -93,6 +93,67 @@ AS $$
 $$;
 REVOKE EXECUTE ON FUNCTION test_get_member_group(text) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION test_get_member_group(text) TO anon;
+
+-- ============================================================
+-- 2026-11-25 新增：櫃台「撤銷這筆」（kiosk_undo_makeup_attendance）測試用輔助 RPC
+-- ============================================================
+
+-- test_reset_makeup：把某學員某堂的補課登記清掉重建成「待補課」、出勤還原成 O，回傳新的 makeup id
+CREATE OR REPLACE FUNCTION test_reset_makeup(p_member_db_id bigint, p_session_ref bigint)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_id bigint;
+BEGIN
+  DELETE FROM makeup_attendances WHERE makeup_ref IN (
+    SELECT id FROM makeups WHERE member_ref = p_member_db_id AND session_ref = p_session_ref);
+  DELETE FROM makeups WHERE member_ref = p_member_db_id AND session_ref = p_session_ref;
+  UPDATE attendance SET mark = 'O', source = 'api', updated_at = now()
+   WHERE member_ref = p_member_db_id AND session_ref = p_session_ref;
+  INSERT INTO makeups (member_ref, session_ref, method, earliest_date, deadline_date, status, registered_by)
+  VALUES (p_member_db_id, p_session_ref, '影音', CURRENT_DATE - 10, CURRENT_DATE + 30, '待補課', '櫃台')
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION test_reset_makeup(bigint, bigint) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION test_reset_makeup(bigint, bigint) TO anon;
+
+-- test_get_makeup_state：回傳補課狀態、完成日、對應出勤代碼、到場紀錄筆數
+CREATE OR REPLACE FUNCTION test_get_makeup_state(p_makeup_id bigint)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+    'status',           mk.status,
+    'completed_date',   mk.completed_date,
+    'mark',             (SELECT a.mark FROM attendance a
+                          WHERE a.member_ref = mk.member_ref AND a.session_ref = mk.session_ref),
+    'attendance_count', (SELECT count(*) FROM makeup_attendances ma WHERE ma.makeup_ref = mk.id)
+  )
+  FROM makeups mk WHERE mk.id = p_makeup_id;
+$$;
+REVOKE EXECUTE ON FUNCTION test_get_makeup_state(bigint) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION test_get_makeup_state(bigint) TO anon;
+
+-- test_shift_attendance_days：把某筆到場紀錄的時間往前推 N 天（測「非當天不能撤銷」）
+CREATE OR REPLACE FUNCTION test_shift_attendance_days(p_attendance_id bigint, p_days int)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE makeup_attendances
+     SET attended_at = attended_at - make_interval(days => p_days),
+         departed_at = departed_at - make_interval(days => p_days)
+   WHERE id = p_attendance_id;
+$$;
+REVOKE EXECUTE ON FUNCTION test_shift_attendance_days(bigint, int) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION test_shift_attendance_days(bigint, int) TO anon;
 
 -- 驗收：應該要看到 staff_id 跟兩個 member 的 id 都不是 null
 SELECT test_get_seed_ids();

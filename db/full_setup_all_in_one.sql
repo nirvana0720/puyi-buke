@@ -4269,7 +4269,9 @@ BEGIN
         'member_name',    m.name,
         'class_name',     c.class_name,
         'session_date',   s.date,
-        'status',         mk.status
+        'status',         mk.status,
+        'attendance_id',  ma.id,
+        'makeup_id',      ma.makeup_ref
       ) AS row_data
       FROM makeup_attendances ma
       JOIN makeups  mk ON mk.id  = ma.makeup_ref
@@ -4300,6 +4302,89 @@ BEGIN
           = (now()           AT TIME ZONE 'Asia/Taipei')::date
     ) combined
   ), '[]'::jsonb);
+END;
+$$;
+
+-- ── 9b. kiosk_undo_makeup_attendance（2026-11-25 新增）──────────────
+-- 櫃台「今日到場紀錄」每列的「撤銷這筆」：義工按錯人（到場／尚未補完／補課完成）時就地救回。
+-- 只限影片補課、只限今天（台北時間）的到場紀錄；過了當天請管理員到後台處理。
+-- 若該堂補課已標「已完成」且撤銷的是最後一次到場，一併還原（邏輯複製自 rpc_makeup_admin.sql 的 uncomplete_makeup：
+-- ML→LL、M→O、makeups 回待補課）——刻意不直接呼叫 uncomplete_makeup，因為它沒有義工驗證、也沒開放給 anon。
+-- 最後只刪這一筆 makeup_attendances，同一堂其他次的到場紀錄不動。
+CREATE OR REPLACE FUNCTION kiosk_undo_makeup_attendance(p_staff_id bigint, p_attendance_id bigint)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_makeup_id   bigint;
+  v_attended_at timestamptz;
+  v_member_ref  bigint;
+  v_session_ref bigint;
+  v_status      text;
+  v_cur_mark    text;
+BEGIN
+  PERFORM _kiosk_verify_staff(p_staff_id);
+
+  SELECT makeup_ref, attended_at
+    INTO v_makeup_id, v_attended_at
+    FROM makeup_attendances
+   WHERE id = p_attendance_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '找不到這筆到場紀錄（id=%）', p_attendance_id;
+  END IF;
+
+  IF v_attended_at IS NULL
+     OR (v_attended_at AT TIME ZONE 'Asia/Taipei')::date
+        <> (now() AT TIME ZONE 'Asia/Taipei')::date THEN
+    RAISE EXCEPTION '只能撤銷今天的到場紀錄，請管理員到後台處理';
+  END IF;
+
+  SELECT member_ref, session_ref, status
+    INTO v_member_ref, v_session_ref, v_status
+    FROM makeups
+   WHERE id = v_makeup_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '找不到對應的補課登記（makeup_id=%）', v_makeup_id;
+  END IF;
+
+  -- 只有撤銷的是「這堂補課最後一次到場」才還原完成；撤銷較早那次（例如先尚未補完、
+  -- 後來另一次才補完），完成是後面那次造成的，不該被收回（2026-11-25 星星確認）
+  IF v_status = '已完成' AND NOT EXISTS (
+       SELECT 1 FROM makeup_attendances
+        WHERE makeup_ref = v_makeup_id
+          AND id <> p_attendance_id
+          AND attended_at > v_attended_at
+     ) THEN
+    SELECT mark INTO v_cur_mark
+      FROM attendance
+     WHERE member_ref = v_member_ref AND session_ref = v_session_ref;
+
+    -- ML→LL、M→O（含原 A 情況一律回 O，同 uncomplete_makeup）
+    IF v_cur_mark = 'ML' THEN
+      UPDATE attendance
+         SET mark = 'LL', source = 'manual', updated_at = now()
+       WHERE member_ref = v_member_ref AND session_ref = v_session_ref;
+    ELSIF v_cur_mark = 'M' THEN
+      UPDATE attendance
+         SET mark = 'O',  source = 'manual', updated_at = now()
+       WHERE member_ref = v_member_ref AND session_ref = v_session_ref;
+    END IF;
+
+    UPDATE makeups
+       SET status         = '待補課',
+           completed_date = null
+     WHERE id = v_makeup_id;
+  END IF;
+
+  DELETE FROM makeup_attendances WHERE id = p_attendance_id;
+
+  RETURN '{"ok":true}'::jsonb;
 END;
 $$;
 
@@ -4571,6 +4656,7 @@ REVOKE EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)           
 REVOKE EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION kiosk_undo_makeup_attendance(bigint, bigint)                         FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION kiosk_get_upcoming_registrations(bigint, int)                        FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION kiosk_get_day(bigint, date)                                          TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_training_makeup_complete(bigint, bigint)                       TO anon;
@@ -4596,6 +4682,7 @@ GRANT  EXECUTE ON FUNCTION kiosk_transfer_mark_absent(bigint, bigint)           
 GRANT  EXECUTE ON FUNCTION kiosk_lookup_member_by_name(bigint, text)                            TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_search_members_by_name(bigint, text, int)                      TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_get_today_log(bigint)                                          TO anon;
+GRANT  EXECUTE ON FUNCTION kiosk_undo_makeup_attendance(bigint, bigint)                         TO anon;
 GRANT  EXECUTE ON FUNCTION kiosk_get_upcoming_registrations(bigint, int)                        TO anon;
 
 -- get_training_courses：舊前端已停用但保留相容
