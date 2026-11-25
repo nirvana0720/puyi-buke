@@ -248,6 +248,7 @@ function todayStr() {
   // ── 未來預約補課／調班：兩區塊各自獨立的天數狀態（預設 7 天） ────
   let upcomingTransfersDays = 7;
   let upcomingMakeupsDays   = 7;
+  let showClosedMakeups = false; // 2026-11-25：是否顯示「今天來過、已結案」的補課卡片
 
   async function loadUpcomingTransfers() {
     const el = document.getElementById('kiosk-upcoming-transfers');
@@ -360,6 +361,7 @@ function todayStr() {
         onDepart: async (makeupId) => {
           await kioskMakeupDepart(sb, staff.staff_id, makeupId);
           await refreshTodayLogAndMachines();
+          loadDay(datePicker.value); // 結案後重新載入，已結案的卡片依規則隱藏
         },
         onComplete: async (makeupId) => {
           await kioskMakeupComplete(sb, staff.staff_id, makeupId);
@@ -409,10 +411,16 @@ function todayStr() {
         kioskGetTodayLog(sb, staff.staff_id),
       ]);
       const today = todayStr();
-      const makeups = (day.makeups || []).map(m => ({
+      const allMakeups = (day.makeups || []).map(m => ({
         ...m,
         is_overdue: m.deadline_date != null && today > m.deadline_date,
       }));
+      // 2026-11-25：來過、已按「此堂課尚未補完」結案（有到場紀錄、目前沒有到場中）的卡片，
+      // 預設從今日補課清單隱藏（通常當天不會再來）；義工可按清單下方「顯示」按鈕看回來。
+      // 紀錄本身不受影響，仍在「今日到場紀錄」，且可在那邊「撤銷這筆」。
+      const isClosedToday = m => (m.attend_count || 0) >= 1 && !m.has_open_attendance;
+      const hiddenClosedCount = allMakeups.filter(isClosedToday).length;
+      const makeups = showClosedMakeups ? allMakeups : allMakeups.filter(m => !isClosedToday(m));
       const machineStatus = computeMachineStatus(todayLogRecords);
       const machineCount = day.video_machine_count ?? (CONFIG.VIDEO_MACHINE_COUNT || 5);
       renderTransfers(day.transfers, {
@@ -459,6 +467,21 @@ function todayStr() {
           await kioskCancelMakeup(sb, staff.staff_id, makeupId);
         },
       }, machineStatus, machineCount);
+      if (hiddenClosedCount > 0 || showClosedMakeups) {
+        const mkEl = document.getElementById('kiosk-makeups');
+        if (mkEl) {
+          const note = document.createElement('p');
+          note.style.cssText = 'font-size:13px;color:var(--muted);margin:8px 0 0';
+          note.innerHTML = showClosedMakeups
+            ? '目前連「今天來過、已按尚未補完」的人也一起顯示。 <button type="button" class="buke-btn buke-btn-ghost" id="mk-toggle-closed" style="font-size:12px;padding:3px 10px;min-height:28px">收起已處理的人</button>'
+            : `另有 ${hiddenClosedCount} 位今天來過、已按「尚未補完」的人已隱藏（紀錄在下方今日到場記錄）。 <button type="button" class="buke-btn buke-btn-ghost" id="mk-toggle-closed" style="font-size:12px;padding:3px 10px;min-height:28px">顯示</button>`;
+          mkEl.appendChild(note);
+          note.querySelector('#mk-toggle-closed').addEventListener('click', () => {
+            showClosedMakeups = !showClosedMakeups;
+            loadDay(datePicker.value);
+          });
+        }
+      }
       renderTrainingMakeupsToday(day.training_makeups || [], {
         onAttend: async (trainingMakeupId, machineNumber) => {
           const result = await kioskTrainingMakeupAttend(sb, staff.staff_id, trainingMakeupId, machineNumber);

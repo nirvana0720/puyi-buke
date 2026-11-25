@@ -2,6 +2,7 @@
 - db/full_setup_all_in_one.sql：kiosk_get_today_log 影片補課列多回傳 attendance_id、makeup_id；新增 kiosk_undo_makeup_attendance（限當天、限影片補課，anon＋義工驗證）
 - ui/kiosk：renderTodayLog 搬到新檔 kiosk_render_todaylog.js 並加撤銷按鈕；kiosk.js 新增 kioskUndoMakeupAttendance
 - test：新增撤銷相關 8 項測試與 3 支測試輔助 RPC
+- ui/kiosk/kiosk.js：今日補課清單把「今天來過、已按尚未補完」的卡片預設隱藏，清單下方可按「顯示」看回來；按尚未補完後重新載入清單
 - 移交手冊.md：資料庫修正對照表補上 2026-11-16 一列（get_student_view 多回傳 makeup_earliest_mode）
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
